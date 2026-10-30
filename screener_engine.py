@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-現代多維度量化股票篩選與決策引擎 (具備智慧流動性與主交易所自動識別機制)
+現代多維度量化股票篩選與決策引擎 (支援單欄位名稱輸入與主板代碼智慧對應)
 """
 
 import os
@@ -24,12 +24,12 @@ class QuantScreenerEngine:
             df = pd.read_excel(self.watchlist_path, sheet_name="Watchlist Stocks")
             for col in ["Stock Name", "Symbol", "Ticker", "股票名稱", "代碼"]:
                 if col in df.columns:
-                    return df[col].dropna().tolist()
-            return df.iloc[:, 0].dropna().tolist()
+                    return df[col].dropna().astype(str).str.strip().tolist()
+            return df.iloc[:, 0].dropna().astype(str).str.strip().tolist()
         except Exception as e:
             return [
                 "NVIDIA", "Microsoft", "Apple", "Alphabet", "Amazon", "Meta", "Tesla", "AMD",
-                "ASML", "Symbiotic", "Northern Data", "Wise", "JinkoSolar", "BASF", "E.ON"
+                "ASML", "Mersen", "Kuraray", "ThyssenKrupp", "Symbiotic", "Northern Data", "Soitec", "Wise"
             ]
 
     def get_current_market_state(self):
@@ -62,13 +62,44 @@ class QuantScreenerEngine:
 
     def get_ticker_symbol(self, stock_name):
         """
-        智慧動態識別與主交易所過濾：
-        自動向 Yahoo Finance 搜尋，並優先選擇流動性最高的主板代碼（例如美股主板、港股 .HK），
-        自動避開歐陸小交易所（如 .MU, .SG）或美股粉單市場 OTC 標的（如 NDTAF）。
+        智慧代碼對應與過濾：
+        若 Excel 中只有名稱，透過內建精準映射與 Yahoo Finance 動態搜尋主板，
+        自動避開 ADR、粉單 OTC 與歐陸小交易所（如 .MU, .SG）。
         """
         name_clean = str(stock_name).strip()
         
-        # 若本身已經是標準代碼，直接返回
+        # 常見全球標的之精準主板代碼對應表（確保 100% 不抓錯）
+        direct_mapping = {
+            "Mersen": "MRN.PA",
+            "Kuraray": "3405.T",
+            "ThyssenKrupp": "TKA.DE",
+            "Thyssen Krupp": "TKA.DE",
+            "Symbiotic": "SYM",
+            "Northern Data": "NB2.DE",
+            "Soitec": "SOI.PA",
+            "Wise": "WISE.L",
+            "Plan Optik": "PLN.DE",
+            "JinkoSolar": "JKS",
+            "BASF": "BAS.DE",
+            "E.ON": "EOAN.DE",
+            "NVIDIA": "NVDA",
+            "Microsoft": "MSFT",
+            "Apple": "AAPL",
+            "Alphabet": "GOOGL",
+            "Amazon": "AMZN",
+            "Meta": "META",
+            "Tesla": "TSLA",
+            "AMD": "AMD",
+            "ASML": "ASML"
+        }
+        
+        if name_clean in direct_mapping:
+            return direct_mapping[name_clean]
+        
+        for k, v in direct_mapping.items():
+            if k.lower() in name_clean.lower():
+                return v
+
         if len(name_clean) <= 8 and ("." in name_clean or name_clean.isupper()):
             return name_clean
 
@@ -83,29 +114,22 @@ class QuantScreenerEngine:
                 quotes = data.get('quotes', [])
                 if quotes:
                     best_symbol = quotes[0]['symbol']
-                    # 智慧過濾：優先選擇 US 主板 (無點或主交易所) 或原生地主板
                     for q in quotes:
                         sym = q.get('symbol', '')
                         exch = q.get('exchange', '')
                         qtype = q.get('quoteType', '')
                         if qtype in ['EQUITY', 'ETF']:
-                            # 排除德國小交易所 (.MU, .SG, .F) 與 美股粉單 OTC
-                            if any(ext in sym for ext in ['.SG', '.MU', '.F', '.DU', '.HM', 'F']):
+                            if any(ext in sym for ext in ['.SG', '.MU', '.F', '.DU', '.HM', 'F', 'Y']):
                                 continue
                             if exch in ['NMS', 'NYQ', 'NGM', 'ASE'] or '.' not in sym:
                                 best_symbol = sym
                                 break
-                            elif '.HK' in sym:
+                            elif any(ext in sym for ext in ['.HK', '.PA', '.DE', '.T', '.L']):
                                 best_symbol = sym
                                 break
                     return best_symbol
         except Exception:
             pass
-
-        if "(" in name_clean and ")" in name_clean:
-            possible_ticker = name_clean.split("(")[-1].split(")")[0].strip()
-            if len(possible_ticker) > 1:
-                return possible_ticker
 
         return name_clean
 
@@ -146,7 +170,7 @@ class QuantScreenerEngine:
                         "綜合評分": 0.0,
                         "評估結果": "不合格",
                         "投資建議": "暫時剔除 (Exclude)",
-                        "不合格原因": f"動態識別代碼 ({symbol}) 後無法取得有效歷史數據",
+                        "不合格原因": f"對應代碼 ({symbol}) 後無法取得有效歷史數據",
                         "量化預測 IC": 0.0,
                         "Sharpe Ratio": 0.0,
                         "Piotroski F": "0/9",
@@ -271,7 +295,7 @@ class QuantScreenerEngine:
                     "量化預測 IC": 0.0,
                     "Sharpe Ratio": 0.0,
                     "Piotroski F": "0/9",
-                    "Altman Z": z_score,
+                    "Altman Z": 0.0,
                     "威科夫微觀結構": "N/A",
                     "建議倉位比例": "0%",
                     "建議配置金額 (€)": 0.0,
