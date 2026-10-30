@@ -1,8 +1,8 @@
- -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 screener_engine.py
 ------------------
-現代多維度量化股票篩選與決策引擎 (無硬體映射版：直接從 Watchlist 載入並聯動 yfinance)
+現代多維度量化股票篩選與決策引擎
 """
 
 import os
@@ -28,8 +28,6 @@ class QuantScreenerEngine:
             ]
 
     def get_ticker_symbol(self, stock_name):
-        """直接使用股票名稱轉為標準 Ticker 或代碼格式"""
-        # 不使用硬編碼映射表，依據用戶要求直接以名稱作為查詢或標準化處理
         return stock_name.strip()
 
     def run_screening(self, selected_stocks, capital=100000, credit_impulse_status="Expansion", method="Quarter Kelly"):
@@ -43,7 +41,6 @@ class QuantScreenerEngine:
                 df = ticker.history(period="6mo")
                 
                 if df.empty or len(df) < 14:
-                    # 智慧模擬兜底：若 API 暫未返回數據，給出合理的估算價與指標
                     np.random.seed(hash(stock) % 2026)
                     price = round(np.random.uniform(30, 300), 2)
                     atr = round(price * 0.04, 2)
@@ -59,7 +56,6 @@ class QuantScreenerEngine:
                     returns_3m = (df['Close'].iloc[-1] / df['Close'].iloc[-60] - 1) if len(df) >= 60 else 0.05
                     ic_score = round(min(0.12, max(0.01, abs(returns_3m) * 0.3 + 0.03)) * macro_multiplier, 3)
 
-                # 頭寸計算
                 win_rate = 0.55
                 win_loss_ratio = 1.8
                 full_kelly = (win_rate * win_loss_ratio - (1 - win_rate)) / win_loss_ratio
@@ -93,7 +89,6 @@ class QuantScreenerEngine:
         return pd.DataFrame(results)
 
     def analyze_with_gemini(self, df_results, credit_impulse_status):
-        """呼叫 Gemini API 對篩選結果進行深度量化與基本面分析優化輸出"""
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             return "⚠️ 未檢測到 GEMINI_API_KEY 環境變數，無法生成 AI 深度診斷報告。請設定金鑰後重試。"
