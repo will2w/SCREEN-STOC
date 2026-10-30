@@ -2,10 +2,11 @@
 """
 screener_engine.py
 ------------------
-現代多維度量化股票篩選與決策引擎 (純動態候選測試與成交量最優選擇法)
+現代多維度量化股票篩選與決策引擎 (具備 API 頻率防禦與記憶體快取機制)
 """
 
 import os
+import time
 import pandas as pd
 import numpy as np
 import yfinance as yf
@@ -17,6 +18,7 @@ from datetime import datetime
 class QuantScreenerEngine:
     def __init__(self, watchlist_path="Watchlist_Stocks.xlsx"):
         self.watchlist_path = watchlist_path
+        self._symbol_cache = {}  # 記憶體快取，避免重複請求
         self.watchlist = self._load_watchlist()
 
     def _load_watchlist(self):
@@ -61,13 +63,14 @@ class QuantScreenerEngine:
         }
 
     def get_ticker_symbol(self, stock_name):
-        """
-        核心機制：動態搜尋候選 ➔ 逐一實際測試抓取 ➔ 選擇成交量最大、最優的主板代碼
-        """
         name_clean = str(stock_name).strip()
         
-        # 若本身已經是乾淨的標準代碼，直接返回
+        # 檢查快取
+        if name_clean in self._symbol_cache:
+            return self._symbol_cache[name_clean]
+
         if len(name_clean) <= 6 and name_clean.isupper() and "." not in name_clean:
+            self._symbol_cache[name_clean] = name_clean
             return name_clean
 
         search_query = name_clean.split('(')[0].strip()
@@ -76,6 +79,7 @@ class QuantScreenerEngine:
         
         candidates = []
         try:
+            time.sleep(0.3)  # 禮貌性延遲，避免 429 Too Many Requests
             res = requests.get(url, headers=headers, timeout=5)
             if res.status_code == 200:
                 data = res.json()
@@ -83,32 +87,29 @@ class QuantScreenerEngine:
                 for q in quotes:
                     sym = q.get('symbol', '')
                     qtype = q.get('quoteType', '')
-                    # 嚴格排除非股票資產 (如 ETF、基金、債券)
+                    # 嚴格過濾 ETF、基金等非股票資產
                     if qtype != 'EQUITY':
                         continue
-                    # 排除德國地方小交易所與粉單
                     if any(ext in sym for ext in ['.SG', '.MU', '.F', '.DU', '.HM']):
                         continue
                     candidates.append(sym)
         except Exception:
             pass
 
-        # 如果搜尋不到，把原名稱當作第一候選
         if not candidates:
             candidates = [search_query]
             
-        # 針對歐洲大廠，若候選裏沒有帶後綴，自動幫忙補上常見的歐洲主板後綴進行測試
         extended_candidates = list(candidates)
         for sym in candidates[:3]:
             if '.' not in sym:
                 extended_candidates.extend([f"{sym}.DE", f"{sym}.PA", f"{sym}.L", f"{sym}.MI"])
 
-        # 逐一嘗試抓取數據，選出成交量最大、流動性最高的最佳代碼！
         best_symbol = extended_candidates[0]
         max_volume = -1.0
 
-        for sym in extended_candidates[:8]:  # 最多測試前 8 個候選
+        for sym in extended_candidates[:6]:  # 控制測試次數避免頻率過高
             try:
+                time.sleep(0.2)  # 每次請求間隔
                 test_ticker = yf.Ticker(sym)
                 hist = test_ticker.history(period="5d")
                 if not hist.empty and 'Volume' in hist.columns:
@@ -119,7 +120,9 @@ class QuantScreenerEngine:
             except Exception:
                 continue
 
-        return best_symbol if max_volume >= 0 else candidates[0]
+        final_sym = best_symbol if max_volume >= 0 else candidates[0]
+        self._symbol_cache[name_clean] = final_sym
+        return final_sym
 
     def get_currency_symbol(self, currency_code):
         mapping = {
@@ -136,6 +139,7 @@ class QuantScreenerEngine:
         for stock in selected_stocks:
             symbol = self.get_ticker_symbol(stock)
             try:
+                time.sleep(0.2)  # 避免迴圈過快觸發頻率限制
                 ticker = yf.Ticker(symbol)
                 df = ticker.history(period="6mo")
                 
@@ -159,7 +163,7 @@ class QuantScreenerEngine:
                         "綜合評分": 0.0,
                         "評估結果": "不合格",
                         "投資建議": "暫時剔除 (Exclude)",
-                        "不合格原因": f"代碼 ({symbol}) 無法取得有效歷史行情數據",
+                        "不合格原因": f"代碼 ({symbol}) 請求過多或無法取得歷史數據 (Rate Limited)",
                         "量化預測 IC": 0.0,
                         "Sharpe Ratio": 0.0,
                         "Piotroski F": "5/9",
@@ -168,7 +172,7 @@ class QuantScreenerEngine:
                         "建議倉位比例": "0%",
                         "建議配置金額 (€)": 0.0,
                         "ATR 停損位": "N/A",
-                        "狀態": "不合格 (數據異常)"
+                        "狀態": "不合格 (頻率限制或數據異常)"
                     })
                     continue
                 
