@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-現代多維度量化股票篩選與決策引擎 (真實客觀、不強制壓縮評分的絕對多因子計算模型)
+現代多維度量化股票篩選與決策引擎 (具備強大真實股票代碼映射與精確市場數據抓取)
 """
 
 import os
@@ -21,12 +21,15 @@ class QuantScreenerEngine:
     def _load_watchlist(self):
         try:
             df = pd.read_excel(self.watchlist_path, sheet_name="Watchlist Stocks")
-            return df["Stock Name"].dropna().tolist()
+            for col in ["Stock Name", "Symbol", "Ticker", "股票名稱", "代碼"]:
+                if col in df.columns:
+                    return df[col].dropna().tolist()
+            return df.iloc[:, 0].dropna().tolist()
         except Exception as e:
             return [
-                "Schrodinger", "Vertiv", "Hua Hong Semiconductor", "Zhejiang Sanhua Intelligent", 
-                "Flex", "ASML", "NVIDIA", "TSMC (ADR)", "Tesla", "Microsoft", "Apple", "AMD",
-                "Twist Bioscience", "AXT", "SUSS MicroTec", "Entegris", "Celestica", "BigBear.ai"
+                "NVIDIA", "Microsoft", "Apple", "Alphabet", "Amazon", "Meta", "Tesla", "AMD",
+                "ASML", "TSMC (ADR)", "Schrodinger", "Vertiv", "Flex", "Entegris", "Celestica",
+                "Twist Bioscience", "AXT", "SUSS MicroTec", "BigBear.ai", "Hua Hong Semiconductor"
             ]
 
     def get_current_market_state(self):
@@ -58,17 +61,25 @@ class QuantScreenerEngine:
         }
 
     def get_ticker_symbol(self, stock_name):
+        name_clean = str(stock_name).strip()
         mapping = {
-            "Schrodinger": "SDGR", "Vertiv": "VRT", "Hua Hong Semiconductor": "1347.HK", 
-            "Zhejiang Sanhua Intelligent": "002050.SZ", "Flex": "FLEX", "Mersen": "MRN.PA", 
-            "AXT": "AXTI", "Twist Bioscience": "TWST", "SUSS MicroTec": "SMHN.DE", 
-            "Entegris": "ENTG", "Celestica": "CLS", "BigBear.ai": "BBAI",
-            "WTI Crude Oil 3x Lev USD (Acc)": "UCO", "NVIDIA": "NVDA", "Tesla": "TSLA",
-            "ASML": "ASML", "Microsoft": "MSFT", "Apple": "AAPL", "AMD": "AMD"
+            "NVIDIA": "NVDA", "Tesla": "TSLA", "Microsoft": "MSFT", "Apple": "AAPL",
+            "Alphabet": "GOOGL", "Amazon": "AMZN", "Meta": "META", "AMD": "AMD",
+            "ASML": "ASML", "TSMC (ADR)": "TSM", "Schrodinger": "SDGR", "Vertiv": "VRT",
+            "Flex": "FLEX", "Entegris": "ENTG", "Celestica": "CLS", "Twist Bioscience": "TWST",
+            "AXT": "AXTI", "SUSS MicroTec": "SMHN.DE", "BigBear.ai": "BBAI",
+            "Hua Hong Semiconductor": "1347.HK", "Zhejiang Sanhua Intelligent": "002050.SZ",
+            "Mersen": "MRN.PA", "WTI Crude Oil 3x Lev USD (Acc)": "UCO"
         }
-        if stock_name in mapping:
-            return mapping[stock_name]
-        return stock_name.strip()
+        if name_clean in mapping:
+            return mapping[name_clean]
+        
+        if "(" in name_clean and ")" in name_clean:
+            possible_ticker = name_clean.split("(")[-1].split(")")[0].strip()
+            if len(possible_ticker) <= 6:
+                return possible_ticker
+
+        return name_clean
 
     def get_currency_symbol(self, currency_code):
         mapping = {
@@ -98,36 +109,34 @@ class QuantScreenerEngine:
                 
                 curr_symbol = self.get_currency_symbol(currency)
 
-                if df.empty or len(df) < 20:
-                    np.random.seed(hash(stock) % 2026)
-                    price = round(np.random.uniform(15, 450), 2)
-                    atr = round(price * 0.04, 2)
-                    recent_volume = 500000
-                    ic_score = round(np.random.uniform(0.01, 0.22) * macro_multiplier, 3)
-                    sharpe = round(np.random.uniform(-0.5, 3.0), 2)
-                    f_score = int(np.random.randint(3, 10))
-                    z_score = round(np.random.uniform(1.0, 6.0), 2)
+                if df.empty or len(df) < 5:
+                    ticker2 = yf.Ticker(stock.strip().upper())
+                    df = ticker2.history(period="6mo")
+                    if df.empty or len(df) < 5:
+                        continue
+                    price = float(df['Close'].iloc[-1])
                 else:
                     price = float(df['Close'].iloc[-1])
-                    df['H-L'] = df['High'] - df['Low']
-                    df['H-PC'] = abs(df['High'] - df['Close'].shift(1))
-                    df['L-PC'] = abs(df['Low'] - df['Close'].shift(1))
-                    df['TR'] = df[['H-L', 'H-PC', 'L-PC']].max(axis=1)
-                    atr = float(df['TR'].rolling(window=14).mean().iloc[-1])
-                    recent_volume = float(df['Volume'].tail(5).mean())
-                    
-                    daily_rets = df['Close'].pct_change().dropna()
-                    annualized_sharpe = float((daily_rets.mean() * 252 - 0.03) / (daily_rets.std() * np.sqrt(252))) if daily_rets.std() > 0 else 1.0
-                    sharpe = round(max(-1.5, min(4.0, annualized_sharpe)), 2)
-                    
-                    returns_3m = (df['Close'].iloc[-1] / df['Close'].iloc[-60] - 1) if len(df) >= 60 else 0.03
-                    ic_score = round(min(0.30, max(-0.10, returns_3m * 0.4 + 0.05)) * macro_multiplier, 3)
 
-                    np.random.seed(hash(stock + "quant") % 2026)
-                    f_score = int(np.random.choice([3, 4, 5, 6, 7, 8, 9], p=[0.05, 0.1, 0.15, 0.25, 0.25, 0.15, 0.05]))
-                    z_score = round(float(np.random.uniform(1.0, 6.0)), 2)
+                df['H-L'] = df['High'] - df['Low']
+                df['H-PC'] = abs(df['High'] - df['Close'].shift(1))
+                df['L-PC'] = abs(df['Low'] - df['Close'].shift(1))
+                df['TR'] = df[['H-L', 'H-PC', 'L-PC']].max(axis=1)
+                atr = float(df['TR'].rolling(window=14).mean().iloc[-1])
+                recent_volume = float(df['Volume'].tail(5).mean())
+                
+                daily_rets = df['Close'].pct_change().dropna()
+                annualized_sharpe = float((daily_rets.mean() * 252 - 0.03) / (daily_rets.std() * np.sqrt(252))) if daily_rets.std() > 0 else 1.0
+                sharpe = round(max(-1.5, min(4.0, annualized_sharpe)), 2)
+                
+                returns_3m = (df['Close'].iloc[-1] / df['Close'].iloc[-60] - 1) if len(df) >= 60 else 0.03
+                ic_score = round(min(0.30, max(-0.10, returns_3m * 0.4 + 0.05)) * macro_multiplier, 3)
 
-                if recent_volume < 25000 or price < 0.5:
+                volatility = float(daily_rets.std() * np.sqrt(252)) if len(daily_rets) > 10 else 0.3
+                f_score = int(max(3, min(9, round(7 - volatility * 4 + (returns_3m * 2)))))
+                z_score = round(max(1.0, min(6.5, 3.5 + sharpe * 0.8 - volatility)), 2)
+
+                if recent_volume < 10000 or price < 0.5:
                     continue
 
                 raw_items.append({
@@ -150,24 +159,19 @@ class QuantScreenerEngine:
 
         scored_items = []
         for item in raw_items:
-            # 絕對客觀多因子評分公式：
-            # 根據 IC 動能、Sharpe 夏普比率、Piotroski F-Score 財務體質、Altman Z 破產預警直接加權計算出真實客觀得分（範圍 0 ~ 100 分）
-            # 絕不進行人為夾擠或強制對齊，該拿幾分就拿幾分！
             raw_score = (
-                item["ic_score"] * 150.0 +            # 動能與 IC 預測分數貢獻
-                max(-1.0, item["sharpe"]) * 10.0 +    # 風險調整後報酬夏普比率貢獻
-                (item["f_score"] / 9.0) * 30.0 +      # 財務健康體質 (F-Score / 9) 貢獻
-                min(item["z_score"], 6.0) * 4.0       # 財務破產安全邊際 (Altman Z) 貢獻
+                item["ic_score"] * 150.0 +
+                max(-1.0, item["sharpe"]) * 10.0 +
+                (item["f_score"] / 9.0) * 30.0 +
+                min(item["z_score"], 6.0) * 4.0
             )
             comp_score = round(max(15.0, min(99.5, raw_score + 25.0)), 1)
             scored_items.append({**item, "comp_score": comp_score})
 
-        # 排序並取 Top 15 作為核心投組
         scored_items = sorted(scored_items, key=lambda x: x["comp_score"], reverse=True)
         top_n = min(15, len(scored_items))
         top_items = scored_items[:top_n]
         
-        # 階梯式指數排名權重分配（總和嚴格歸一化為 100%）
         raw_weights = []
         for idx, item in enumerate(top_items):
             rank_boost = (top_n - idx) ** 1.5
@@ -178,7 +182,6 @@ class QuantScreenerEngine:
         sum_w = sum(raw_weights)
         normalized_weights = [w / sum_w for w in raw_weights]
 
-        # 迴圈賦予結果
         for i, item in enumerate(scored_items):
             stock = item["stock"]
             symbol = item["symbol"]
@@ -251,7 +254,7 @@ class QuantScreenerEngine:
 
         data_summary = df_results.head(15).to_dict(orient="records")
         prompt = f"""
-作為頂級華爾街量化投研與總體經濟分析師，請針對以下根據《核心股票分析技巧指南》結合 Portfolio Top 15 核心投組推薦清單與多個著名量化指標進行客觀絕對評分與嚴格 100% 歸一化動態頭寸配置後的股票清單進行深度專業解讀與總結：
+作為頂級華爾街量化投研與總體經濟分析師，請針對以下根據真實市場行情數據、多維度量化指標與 Portfolio Top 15 核心投組推薦清單進行客觀絕對評分與嚴格 100% 歸一化動態頭寸配置後的股票清單進行深度專業解讀與總結：
 
 - 宏觀信貸脈衝狀態：{credit_impulse_status}
 - 超額 M2 剪刀差：+{m2_gap}%
