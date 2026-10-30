@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-現代多維度量化股票篩選與決策引擎 (具備 Yahoo Finance 動態自動識別與搜尋功能)
+現代多維度量化股票篩選與決策引擎 (具備智慧流動性與主交易所自動識別機制)
 """
 
 import os
@@ -29,7 +29,7 @@ class QuantScreenerEngine:
         except Exception as e:
             return [
                 "NVIDIA", "Microsoft", "Apple", "Alphabet", "Amazon", "Meta", "Tesla", "AMD",
-                "ASML", "Pop Mart International", "Amkor Technology", "Quanta Services", "Onto Innovation"
+                "ASML", "Symbiotic", "Northern Data", "Wise", "JinkoSolar", "BASF", "E.ON"
             ]
 
     def get_current_market_state(self):
@@ -62,18 +62,17 @@ class QuantScreenerEngine:
 
     def get_ticker_symbol(self, stock_name):
         """
-        利用 Yahoo Finance 動態搜尋 API 自動識別公司名稱對應的股票代碼，
-        完全不需要在程式碼中寫死對應字典。
+        智慧動態識別與主交易所過濾：
+        自動向 Yahoo Finance 搜尋，並優先選擇流動性最高的主板代碼（例如美股主板、港股 .HK），
+        自動避開歐陸小交易所（如 .MU, .SG）或美股粉單市場 OTC 標的（如 NDTAF）。
         """
         name_clean = str(stock_name).strip()
         
-        # 若本身已經是簡短代碼或包含交易所後綴（如 9992.HK, NVDA），直接返回
-        if (len(name_clean) <= 8 and ("." in name_clean or name_clean.isupper())):
+        # 若本身已經是標準代碼，直接返回
+        if len(name_clean) <= 8 and ("." in name_clean or name_clean.isupper()):
             return name_clean
 
-        # 清理名稱（移除括號如 (ADR), (A) 等以提升搜尋精準度）
         search_query = name_clean.split('(')[0].strip()
-        
         url = f"https://query2.finance.yahoo.com/v1/finance/search?q={urllib.parse.quote(search_query)}"
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         
@@ -83,12 +82,26 @@ class QuantScreenerEngine:
                 data = res.json()
                 quotes = data.get('quotes', [])
                 if quotes:
-                    # 自動返回檢索到的第一個最相關股票代碼
-                    return quotes[0]['symbol']
+                    best_symbol = quotes[0]['symbol']
+                    # 智慧過濾：優先選擇 US 主板 (無點或主交易所) 或原生地主板
+                    for q in quotes:
+                        sym = q.get('symbol', '')
+                        exch = q.get('exchange', '')
+                        qtype = q.get('quoteType', '')
+                        if qtype in ['EQUITY', 'ETF']:
+                            # 排除德國小交易所 (.MU, .SG, .F) 與 美股粉單 OTC
+                            if any(ext in sym for ext in ['.SG', '.MU', '.F', '.DU', '.HM', 'F']):
+                                continue
+                            if exch in ['NMS', 'NYQ', 'NGM', 'ASE'] or '.' not in sym:
+                                best_symbol = sym
+                                break
+                            elif '.HK' in sym:
+                                best_symbol = sym
+                                break
+                    return best_symbol
         except Exception:
             pass
 
-        # 備用降級機制：若 API 查詢逾時，嘗試從括號中提取代碼或直接返回原字串
         if "(" in name_clean and ")" in name_clean:
             possible_ticker = name_clean.split("(")[-1].split(")")[0].strip()
             if len(possible_ticker) > 1:
@@ -258,7 +271,7 @@ class QuantScreenerEngine:
                     "量化預測 IC": 0.0,
                     "Sharpe Ratio": 0.0,
                     "Piotroski F": "0/9",
-                    "Altman Z": 0.0,
+                    "Altman Z": z_score,
                     "威科夫微觀結構": "N/A",
                     "建議倉位比例": "0%",
                     "建議配置金額 (€)": 0.0,
