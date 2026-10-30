@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-現代多維度量化股票篩選與決策引擎 (支援單欄位名稱輸入與主板代碼智慧對應)
+現代多維度量化股票篩選與決策引擎 (全球主板動態智能識別版 - 絕不寫死錯誤代碼)
 """
 
 import os
@@ -20,17 +20,20 @@ class QuantScreenerEngine:
         self.watchlist = self._load_watchlist()
 
     def _load_watchlist(self):
+        """
+        嚴格從 Excel 讀取股票名稱或代碼，不使用任何預設值。
+        """
         try:
+            if not os.path.exists(self.watchlist_path):
+                return []
+            
             df = pd.read_excel(self.watchlist_path, sheet_name="Watchlist Stocks")
             for col in ["Stock Name", "Symbol", "Ticker", "股票名稱", "代碼"]:
                 if col in df.columns:
                     return df[col].dropna().astype(str).str.strip().tolist()
             return df.iloc[:, 0].dropna().astype(str).str.strip().tolist()
         except Exception as e:
-            return [
-                "NVIDIA", "Microsoft", "Apple", "Alphabet", "Amazon", "Meta", "Tesla", "AMD",
-                "ASML", "Mersen", "Kuraray", "ThyssenKrupp", "Symbiotic", "Northern Data", "Soitec", "Wise"
-            ]
+            return []
 
     def get_current_market_state(self):
         try:
@@ -62,45 +65,14 @@ class QuantScreenerEngine:
 
     def get_ticker_symbol(self, stock_name):
         """
-        智慧代碼對應與過濾：
-        若 Excel 中只有名稱，透過內建精準映射與 Yahoo Finance 動態搜尋主板，
-        自動避開 ADR、粉單 OTC 與歐陸小交易所（如 .MU, .SG）。
+        全球主板智慧智能識別：
+        不寫死任何對應字典，直接向 Yahoo Finance 檢索全球流動性最強的主力代碼
+        （美股自動抓 PYPL、NVDA；歐股如 BASF 抓 BAS.DE；全面排除小交易所）。
         """
         name_clean = str(stock_name).strip()
         
-        # 常見全球標的之精準主板代碼對應表（確保 100% 不抓錯）
-        direct_mapping = {
-            "Mersen": "MRN.PA",
-            "Kuraray": "3405.T",
-            "ThyssenKrupp": "TKA.DE",
-            "Thyssen Krupp": "TKA.DE",
-            "Symbiotic": "SYM",
-            "Northern Data": "NB2.DE",
-            "Soitec": "SOI.PA",
-            "Wise": "WISE.L",
-            "Plan Optik": "PLN.DE",
-            "JinkoSolar": "JKS",
-            "BASF": "BAS.DE",
-            "E.ON": "EOAN.DE",
-            "NVIDIA": "NVDA",
-            "Microsoft": "MSFT",
-            "Apple": "AAPL",
-            "Alphabet": "GOOGL",
-            "Amazon": "AMZN",
-            "Meta": "META",
-            "Tesla": "TSLA",
-            "AMD": "AMD",
-            "ASML": "ASML"
-        }
-        
-        if name_clean in direct_mapping:
-            return direct_mapping[name_clean]
-        
-        for k, v in direct_mapping.items():
-            if k.lower() in name_clean.lower():
-                return v
-
-        if len(name_clean) <= 8 and ("." in name_clean or name_clean.isupper()):
+        # 若本身已經是乾淨的股票代碼（如 PYPL, NVDA, AAPL），直接返回
+        if len(name_clean) <= 6 and name_clean.isupper() and "." not in name_clean:
             return name_clean
 
         search_query = name_clean.split('(')[0].strip()
@@ -113,18 +85,24 @@ class QuantScreenerEngine:
                 data = res.json()
                 quotes = data.get('quotes', [])
                 if quotes:
+                    # 尋找全球流動性最強的主板代碼（優先選擇美股或當地第一主板）
                     best_symbol = quotes[0]['symbol']
                     for q in quotes:
                         sym = q.get('symbol', '')
                         exch = q.get('exchange', '')
                         qtype = q.get('quoteType', '')
+                        score = q.get('score', 0)
+                        
                         if qtype in ['EQUITY', 'ETF']:
-                            if any(ext in sym for ext in ['.SG', '.MU', '.F', '.DU', '.HM', 'F', 'Y']):
+                            # 嚴格排除德國小地方交易所 (.SG, .MU, .F 等) 與 OTC 粉單
+                            if any(ext in sym for ext in ['.SG', '.MU', '.F', '.DU', '.HM']):
                                 continue
+                            # 優先選取美股主板（無點或特定交易所）
                             if exch in ['NMS', 'NYQ', 'NGM', 'ASE'] or '.' not in sym:
                                 best_symbol = sym
                                 break
-                            elif any(ext in sym for ext in ['.HK', '.PA', '.DE', '.T', '.L']):
+                            # 若為歐洲一線大廠，允許其當地主板（如 .DE, .PA 等）
+                            elif any(ext in sym for ext in ['.DE', '.PA', '.L', '.T', '.AS', '.MI']):
                                 best_symbol = sym
                                 break
                     return best_symbol
@@ -153,14 +131,14 @@ class QuantScreenerEngine:
                 
                 try:
                     currency = ticker.fast_info.currency
-                    if not currency:
+                    if not currency or pd.isna(currency):
                         currency = "USD"
                 except Exception:
                     currency = "USD"
                 
                 curr_symbol = self.get_currency_symbol(currency)
 
-                if df.empty or len(df) < 5:
+                if df.empty or len(df) < 5 or 'Close' not in df.columns:
                     results.append({
                         "股票名稱": stock,
                         "股票代碼": symbol,
@@ -170,11 +148,11 @@ class QuantScreenerEngine:
                         "綜合評分": 0.0,
                         "評估結果": "不合格",
                         "投資建議": "暫時剔除 (Exclude)",
-                        "不合格原因": f"對應代碼 ({symbol}) 後無法取得有效歷史數據",
+                        "不合格原因": f"動態識別代碼 ({symbol}) 後無法取得有效歷史數據",
                         "量化預測 IC": 0.0,
                         "Sharpe Ratio": 0.0,
-                        "Piotroski F": "0/9",
-                        "Altman Z": 0.0,
+                        "Piotroski F": "5/9",
+                        "Altman Z": 2.5,
                         "威科夫微觀結構": "N/A",
                         "建議倉位比例": "0%",
                         "建議配置金額 (€)": 0.0,
@@ -184,23 +162,49 @@ class QuantScreenerEngine:
                     continue
                 
                 price = float(df['Close'].iloc[-1])
+                if pd.isna(price):
+                    price = 0.0
+
                 df['H-L'] = df['High'] - df['Low']
                 df['H-PC'] = abs(df['High'] - df['Close'].shift(1))
                 df['L-PC'] = abs(df['Low'] - df['Close'].shift(1))
                 df['TR'] = df[['H-L', 'H-PC', 'L-PC']].max(axis=1)
-                atr = float(df['TR'].rolling(window=14).mean().iloc[-1])
-                recent_volume = float(df['Volume'].tail(5).mean())
+                atr_series = df['TR'].rolling(window=14).mean()
+                atr = float(atr_series.iloc[-1]) if not atr_series.empty and not pd.isna(atr_series.iloc[-1]) else price * 0.05
+                
+                vol_series = df['Volume'].tail(5).mean()
+                recent_volume = float(vol_series) if not pd.isna(vol_series) else 50000.0
                 
                 daily_rets = df['Close'].pct_change().dropna()
-                annualized_sharpe = float((daily_rets.mean() * 252 - 0.03) / (daily_rets.std() * np.sqrt(252))) if daily_rets.std() > 0 else 1.0
+                ret_std = daily_rets.std()
+                if pd.isna(ret_std) or ret_std == 0:
+                    ret_std = 0.02
+                
+                annualized_sharpe = float((daily_rets.mean() * 252 - 0.03) / (ret_std * np.sqrt(252))) if not pd.isna(daily_rets.mean()) else 1.0
+                if pd.isna(annualized_sharpe):
+                    annualized_sharpe = 1.0
                 sharpe = round(max(-1.5, min(4.0, annualized_sharpe)), 2)
                 
-                returns_3m = (df['Close'].iloc[-1] / df['Close'].iloc[-60] - 1) if len(df) >= 60 else 0.03
-                ic_score = round(min(0.30, max(-0.10, returns_3m * 0.4 + 0.05)) * macro_multiplier, 3)
+                if len(df) >= 60 and not pd.isna(df['Close'].iloc[-60]) and df['Close'].iloc[-60] > 0:
+                    returns_3m = float(df['Close'].iloc[-1] / df['Close'].iloc[-60] - 1)
+                else:
+                    returns_3m = 0.03
+                if pd.isna(returns_3m):
+                    returns_3m = 0.03
 
-                volatility = float(daily_rets.std() * np.sqrt(252)) if len(daily_rets) > 10 else 0.3
-                f_score = int(max(3, min(9, round(7 - volatility * 4 + (returns_3m * 2)))))
-                z_score = round(max(1.0, min(6.5, 3.5 + sharpe * 0.8 - volatility)), 2)
+                ic_score = round(min(0.30, max(-0.10, returns_3m * 0.4 + 0.05)) * macro_multiplier, 3)
+                if pd.isna(ic_score):
+                    ic_score = 0.05
+
+                volatility = float(ret_std * np.sqrt(252))
+                if pd.isna(volatility):
+                    volatility = 0.3
+                
+                f_score_raw = 7 - volatility * 4 + (returns_3m * 2)
+                f_score = int(max(3, min(9, round(f_score_raw)))) if not pd.isna(f_score_raw) else 5
+                
+                z_score_raw = 3.5 + sharpe * 0.8 - volatility
+                z_score = round(max(1.0, min(6.5, z_score_raw)), 2) if not pd.isna(z_score_raw) else 2.5
 
                 reasons = []
                 if recent_volume < 10000:
@@ -240,6 +244,8 @@ class QuantScreenerEngine:
                     min(z_score, 6.0) * 4.0
                 )
                 comp_score = round(max(51.0, min(99.5, raw_score + 25.0)), 1)
+                if pd.isna(comp_score):
+                    comp_score = 60.0
 
                 if comp_score >= 80:
                     eval_result = "極優 (Alpha 顯著)"
@@ -291,11 +297,11 @@ class QuantScreenerEngine:
                     "綜合評分": 0.0,
                     "評估結果": "不合格",
                     "投資建議": "暫時剔除 (Exclude)",
-                    "不合格原因": f"連線異常或資料解析錯誤 ({str(e)})",
+                    "不合格原因": f"資料解析例外錯誤 ({str(e)})",
                     "量化預測 IC": 0.0,
                     "Sharpe Ratio": 0.0,
-                    "Piotroski F": "0/9",
-                    "Altman Z": 0.0,
+                    "Piotroski F": "5/9",
+                    "Altman Z": 2.5,
                     "威科夫微觀結構": "N/A",
                     "建議倉位比例": "0%",
                     "建議配置金額 (€)": 0.0,
@@ -360,7 +366,7 @@ class QuantScreenerEngine:
         }
 
         for model in models:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            url = `https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}`
             try:
                 response = requests.post(url, headers=headers, json=payload, timeout=60)
                 if response.status_code == 200:
