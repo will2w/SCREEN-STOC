@@ -1,3 +1,173 @@
+# -*- coding: utf-8 -*-
+"""
+screener_engine.py
+------------------
+現代多維度量化股票篩選與決策引擎 (修復括號 share class 誤判代碼問題)
+"""
+
+import os
+import pandas as pd
+import numpy as np
+import yfinance as yf
+import requests
+import json
+from datetime import datetime
+
+class QuantScreenerEngine:
+    def __init__(self, watchlist_path="Watchlist_Stocks.xlsx"):
+        self.watchlist_path = watchlist_path
+        self.watchlist = self._load_watchlist()
+
+    def _load_watchlist(self):
+        try:
+            df = pd.read_excel(self.watchlist_path, sheet_name="Watchlist Stocks")
+            for col in ["Stock Name", "Symbol", "Ticker", "股票名稱", "代碼"]:
+                if col in df.columns:
+                    return df[col].dropna().tolist()
+            return df.iloc[:, 0].dropna().tolist()
+        except Exception as e:
+            return [
+                "NVIDIA", "Microsoft", "Apple", "Alphabet", "Amazon", "Meta", "Tesla", "AMD",
+                "ASML", "TSMC (ADR)", "Schrodinger", "Vertiv", "Flex", "Entegris", "Celestica",
+                "Snowflake (A)", "Tuya (ADR) (A)", "Crowdstrike Holdings (A)", "Tianqi Lithium (H)", "SAP", "BP"
+            ]
+
+    def get_current_market_state(self):
+        try:
+            tnx = yf.Ticker("^TNX")
+            hist = tnx.history(period="1mo")
+            if not hist.empty:
+                current_tnx = float(hist['Close'].iloc[-1])
+            else:
+                current_tnx = 4.25
+        except Exception:
+            current_tnx = 4.25
+
+        if current_tnx < 4.5:
+            impulse = "擴張期 (Expansion - 流動性充沛)"
+            m2_default = 1.9
+        elif current_tnx < 5.0:
+            impulse = "中性期 (Neutral)"
+            m2_default = 1.2
+        else:
+            impulse = "收縮期 (Contraction - 防禦為主)"
+            m2_default = 0.4
+
+        return {
+            "credit_impulse": impulse,
+            "m2_gap": m2_default,
+            "benchmark_tnx": current_tnx,
+            "sync_date": datetime.now().strftime("%Y-%m-%d")
+        }
+
+    def get_ticker_symbol(self, stock_name):
+        name_clean = str(stock_name).strip()
+        
+        mapping = {
+            "NVIDIA": "NVDA", "Tesla": "TSLA", "Microsoft": "MSFT", "Apple": "AAPL",
+            "Alphabet": "GOOGL", "Amazon": "AMZN", "Meta": "META", "AMD": "AMD",
+            "ASML": "ASML", "TSMC (ADR)": "TSM", "Schrodinger": "SDGR", "Vertiv": "VRT",
+            "Flex": "FLEX", "Entegris": "ENTG", "Celestica": "CLS", "Twist Bioscience": "TWST",
+            "AXT": "AXTI", "SUSS MicroTec": "SMHN.DE", "BigBear.ai": "BBAI",
+            "Hua Hong Semiconductor": "1347.HK", "Zhejiang Sanhua Intelligent": "002050.SZ",
+            "Mersen": "MRN.PA", "WTI Crude Oil 3x Lev USD (Acc)": "UCO",
+            "Snowflake (A)": "SNOW", "Snowflake": "SNOW",
+            "Tuya (ADR) (A)": "TUYA", "Tuya (ADR)": "TUYA", "Tuya": "TUYA",
+            "Crowdstrike Holdings (A)": "CRWD", "Crowdstrike Holdings": "CRWD",
+            "Tianqi Lithium (H)": "9696.HK", "Tianqi Lithium": "002466.SZ",
+            "SAP": "SAP", "BP": "BP"
+        }
+        if name_clean in mapping:
+            return mapping[name_clean]
+        
+        if "(" in name_clean and ")" in name_clean:
+            possible_ticker = name_clean.split("(")[-1].split(")")[0].strip()
+            if len(possible_ticker) > 1:
+                return possible_ticker
+            else:
+                base_name = name_clean.rsplit("(", 1)[0].strip()
+                if base_name in mapping:
+                    return mapping[base_name]
+                return base_name
+
+        return name_clean
+
+    def get_currency_symbol(self, currency_code):
+        mapping = {
+            "USD": "$", "EUR": "€", "GBP": "£", "HKD": "HK$", "CNY": "¥", 
+            "JPY": "¥", "CHF": "CHF ", "SEK": "kr "
+        }
+        return mapping.get(currency_code, currency_code + " ")
+
+    def run_screening(self, selected_stocks, capital=100000, credit_impulse_status="Expansion", m2_gap=1.8, method="Quarter Kelly"):
+        results = []
+        macro_multiplier = 1.2 if "Expansion" in credit_impulse_status else (1.0 if "Neutral" in credit_impulse_status else 0.8)
+        macro_multiplier *= (1.0 + m2_gap * 0.03)
+        
+        raw_items = []
+        for stock in selected_stocks:
+            symbol = self.get_ticker_symbol(stock)
+            try:
+                ticker = yf.Ticker(symbol)
+                df = ticker.history(period="6mo")
+                
+                try:
+                    currency = ticker.fast_info.currency
+                    if not currency:
+                        currency = "USD"
+                except Exception:
+                    currency = "USD"
+                
+                curr_symbol = self.get_currency_symbol(currency)
+
+                if df.empty or len(df) < 5:
+                    ticker2 = yf.Ticker(stock.strip().upper())
+                    df = ticker2.history(period="6mo")
+                    if df.empty or len(df) < 5:
+                        continue
+                    price = float(df['Close'].iloc[-1])
+                else:
+                    price = float(df['Close'].iloc[-1])
+
+                df['H-L'] = df['High'] - df['Low']
+                df['H-PC'] = abs(df['High'] - df['Close'].shift(1))
+                df['L-PC'] = abs(df['Low'] - df['Close'].shift(1))
+                df['TR'] = df[['H-L', 'H-PC', 'L-PC']].max(axis=1)
+                atr = float(df['TR'].rolling(window=14).mean().iloc[-1])
+                recent_volume = float(df['Volume'].tail(5).mean())
+                
+                daily_rets = df['Close'].pct_change().dropna()
+                annualized_sharpe = float((daily_rets.mean() * 252 - 0.03) / (daily_rets.std() * np.sqrt(252))) if daily_rets.std() > 0 else 1.0
+                sharpe = round(max(-1.5, min(4.0, annualized_sharpe)), 2)
+                
+                returns_3m = (df['Close'].iloc[-1] / df['Close'].iloc[-60] - 1) if len(df) >= 60 else 0.03
+                ic_score = round(min(0.30, max(-0.10, returns_3m * 0.4 + 0.05)) * macro_multiplier, 3)
+
+                volatility = float(daily_rets.std() * np.sqrt(252)) if len(daily_rets) > 10 else 0.3
+                f_score = int(max(3, min(9, round(7 - volatility * 4 + (returns_3m * 2)))))
+                z_score = round(max(1.0, min(6.5, 3.5 + sharpe * 0.8 - volatility)), 2)
+
+                if recent_volume < 10000 or price < 0.5:
+                    continue
+
+                raw_items.append({
+                    "stock": stock,
+                    "symbol": symbol,
+                    "price": price,
+                    "atr": atr,
+                    "currency": currency,
+                    "curr_symbol": curr_symbol,
+                    "ic_score": ic_score,
+                    "sharpe": sharpe,
+                    "f_score": f_score,
+                    "z_score": z_score
+                })
+            except Exception as e:
+                continue
+
+        if not raw_items:
+            return pd.DataFrame()
+
         scored_items = []
         for item in raw_items:
             raw_score = (
