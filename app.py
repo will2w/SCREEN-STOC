@@ -32,7 +32,6 @@ if st.sidebar.button("執行即時量化抓取與篩選", type="primary"):
         if df_res.empty:
             st.error("未能成功抓取選取標的的數據，請檢查網絡連線或標的代碼。")
         else:
-            # Save to session state so Gemini analysis can access it
             st.session_state['df_res'] = df_res
             st.session_state['credit_impulse'] = credit_impulse
             
@@ -49,12 +48,11 @@ if st.sidebar.button("執行即時量化抓取與篩選", type="primary"):
                          labels={'建議配置金額 (€)': '配置金額 (€)', '量化預測 IC': 'Alpha IC 評分'})
             st.plotly_chart(fig, use_container_width=True)
 
-# 🤖 Gemini AI 深度投研診斷區塊
 if 'df_res' in st.session_state and not st.session_state['df_res'].empty:
     st.markdown("---")
     st.markdown("### 🤖 Gemini AI 智能投研與選股深度診斷報告")
     if st.button("✨ 一鍵生成 Gemini 專業投研分析與配置優化報告", type="primary"):
-        with st.spinner("正在調用 Gemini AI (gemini-3.8-flash) 進行多維度量化與基本面深度解讀..."):
+        with st.spinner("正在調用 Gemini AI 進行多維度量化與基本面深度解讀..."):
             ai_report = engine.analyze_with_gemini(st.session_state['df_res'], st.session_state['credit_impulse'])
             st.markdown(ai_report)
 else:
