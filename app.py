@@ -92,4 +92,4 @@ if 'df_res' in st.session_state and not st.session_state['df_res'].empty:
             )
             st.markdown(ai_report)
 else:
-    st.info("👈 請在左側點擊「執行全景量化篩選與威科夫診斷」按鈕，對 Excel 中的股票進行全方位評估與過濾。"
+    st.info("👈 請在左側點擊「執行全景量化篩選與威科夫診斷」按鈕，對 Excel 中的股票進行全方位評估與過濾。")
