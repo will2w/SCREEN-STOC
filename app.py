@@ -10,7 +10,7 @@ st.set_page_config(
 )
 
 st.title("🚀 現代多維度量化股票篩選與決策系統")
-st.markdown("*基於《核心股票分析技巧指南》：結合 2026 實時市場狀態同步、Portfolio Top 15 核心投組、獨立投資建議與倉位配置模組。*")
+st.markdown("*基於《核心股票分析技巧指南》：結合 2026 實時市場狀態同步、Portfolio Top 15 核心投組與量化體質評估模組。*")
 
 engine = QuantScreenerEngine()
 watchlist = engine.watchlist
@@ -75,7 +75,7 @@ if run_btn:
     if not selected_stocks:
         st.warning("請至少選取或載入一檔股票。")
     else:
-        with st.spinner(f"正在連線 2026 實時市場數據並計算 Portfolio Top 15 與多因子量化評分..."):
+        with st.spinner(f"正在連線 2026 實時市場數據並計算 Excel 全景量化評分與 Portfolio Top 15..."):
             df_res = engine.run_screening(
                 selected_stocks, 
                 capital=total_capital, 
@@ -101,17 +101,24 @@ if 'df_res' in st.session_state and not st.session_state['df_res'].empty:
     col3.metric("評估合格標的", f"{len(df_res)} 檔", "多因子量化評分")
     col4.metric("總配置資金", f"€ {total_capital:,.0f}", "分段凱利優化")
     
-    # 建立獨立多 Tab 專頁佈局：包含 Portfolio Top 15 核心投組推薦與單一標的配置明細快速檢索
+    # 精簡後的 4 個 Tab 專頁佈局：1. Excel全景量化評估(純指標) | 2. Portfolio Top 15 核心投組推薦 | 3. 投資建議與倉位配置總覽 | 4. 技術分析與 AI 總結
     tab1, tab2, tab3, tab4 = st.tabs([
+        "📊 全景量化評估清單 (Excel 評估)",
         "🎯 Portfolio Top 15 核心投組推薦", 
-        "🔍 單一標的配置明細快速檢索", 
         "💰 投資建議與倉位配置總覽", 
         "🏆 分項技術分析與 AI 總結"
     ])
     
     with tab1:
-        st.markdown("## 🎯 Portfolio Top 15 核心投組推薦 (Standalone Page)")
-        st.markdown("*本專頁專門展示經過多維度量化引擎、夏普比率、Piotroski F-Score 與凱利公式計算後，最具投資價值的 **Top 15 核心資產配置組合**。*")
+        st.markdown("## 📊 股票池全景量化評估清單 (Excel 全部股票)")
+        st.markdown("*本頁面專門針對 Excel 載入的全部股票進行多維度量化指標評估（包含夏普比率、Piotroski F-Score、Altman Z 與威科夫結構），純粹進行量化體質與動能分析，不涉及資金比例與分配金額。*")
+        
+        excel_view_df = df_res.drop(columns=['raw_price', '貨幣', '建議倉位比例', '建議配置金額 (€)'], errors='ignore')
+        st.dataframe(excel_view_df, use_container_width=True, height=600)
+        
+    with tab2:
+        st.markdown("## 🎯 Portfolio Top 15 核心投組推薦")
+        st.markdown("*本專頁專門展示經過多維度量化引擎、夏普比率、Piotroski F-Score 與凱利公式計算後，最具投資價值的 **Top 15 核心資產配置組合與動態頭寸配置**。*")
         
         top15_df = df_res.head(15).reset_index(drop=True)
         top15_display = top15_df.drop(columns=['raw_price', '貨幣'], errors='ignore')
@@ -123,7 +130,6 @@ if 'df_res' in st.session_state and not st.session_state['df_res'].empty:
             
         st.dataframe(top15_display, use_container_width=True, height=550)
         
-        # 視覺化圖表
         fig_top15 = px.bar(
             top15_df, 
             x='股票名稱', 
@@ -134,23 +140,6 @@ if 'df_res' in st.session_state and not st.session_state['df_res'].empty:
         )
         st.plotly_chart(fig_top15, use_container_width=True)
         
-    with tab2:
-        st.markdown("## 🔍 單一標的配置明細快速檢索 (Standalone Page)")
-        st.markdown("*提供完整的互動式過濾與檢索介面，讓您針對特定投資建議類型或標的快速核對配置比例與 ATR 停損位。*")
-        
-        selected_rec_filter = st.selectbox(
-            "篩選投資建議類型", 
-            ["全部顯示"] + list(df_res['投資建議'].unique()),
-            key="single_asset_filter"
-        )
-        
-        if selected_rec_filter == "全部顯示":
-            alloc_view_df = df_res[['股票名稱', '股票代碼', '最新現價', '投資建議', '綜合評分', '建議倉位比例', '建議配置金額 (€)', 'ATR 停損位', '狀態']]
-        else:
-            alloc_view_df = df_res[df_res['投資建議'] == selected_rec_filter][['股票名稱', '股票代碼', '最新現價', '投資建議', '綜合評分', '建議倉位比例', '建議配置金額 (€)', 'ATR 停損位', '狀態']]
-            
-        st.dataframe(alloc_view_df, use_container_width=True, height=500)
-        
     with tab3:
         st.markdown("### 💰 投資建議與動態資金配置總覽")
         rec_summary = df_res.groupby('投資建議').agg(
@@ -158,7 +147,7 @@ if 'df_res' in st.session_state and not st.session_state['df_res'].empty:
             平均綜合評分=('綜合評分', 'mean'),
             總配置金額=('建議配置金額 (€)', 'sum')
         ).reset_index()
-        rec_summary['平均綜合評分'] = rec_summary['平均綜合評分'].round(1)
+        rec_summary['平均綜合評分'] = rec_summary['平均綜合評分的', 'mean'].round(1) if '平均綜合評分的' in rec_summary.columns else rec_summary['平均綜合評分'].round(1)
         
         col_s1, col_s2 = st.columns([2, 1])
         with col_s1:
@@ -179,7 +168,7 @@ if 'df_res' in st.session_state and not st.session_state['df_res'].empty:
                         ca, cb, cc, cd = st.columns(4)
                         ca.metric("評估結果", row['評估結果'])
                         cb.metric("威科夫微觀結構", row['威科夫微觀結構'])
-                        cc.metric("Altman Z", row['AltManager'] if 'AltManager' in row else row['Altman Z'])
+                        cc.metric("Altman Z", row['Altman Z'])
                         cd.metric("ATR 停損位", row['ATR 停損位'])
                         
                         st.markdown(f"""
@@ -201,4 +190,4 @@ if 'df_res' in st.session_state and not st.session_state['df_res'].empty:
                 )
                 st.markdown(ai_report)
 else:
-    st.info("👈 請在左側側邊欄點擊「執行全景量化篩選與指標評估」按鈕，產出包含 Portfolio Top 15 核心投組推薦與單一標的配置明細的獨立專頁系統。")
+    st.info("👈 請在左側側邊欄點擊「執行全景量化篩選與指標評估」按鈕，產出包含 Excel 全景量化評估與 Portfolio Top 15 核心投組推薦的精簡專業系統。")
