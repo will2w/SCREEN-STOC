@@ -91,7 +91,6 @@ if run_btn:
             st.session_state['credit_impulse'] = credit_impulse
             st.session_state['m2_gap'] = m2_gap
 
-# 主畫面展示 (若已執行評估)
 if 'df_res' in st.session_state and not st.session_state['df_res'].empty:
     df_res = st.session_state['df_res']
     
@@ -101,7 +100,6 @@ if 'df_res' in st.session_state and not st.session_state['df_res'].empty:
     col3.metric("評估合格標的", f"{len(df_res)} 檔", "多因子量化評分")
     col4.metric("總配置資金", f"€ {total_capital:,.0f}", "分段凱利優化")
     
-    # 精簡後的 4 個 Tab 專頁佈局：1. Excel全景量化評估(純指標) | 2. Portfolio Top 15 核心投組推薦 | 3. 投資建議與倉位配置總覽 | 4. 技術分析與 AI 總結
     tab1, tab2, tab3, tab4 = st.tabs([
         "📊 全景量化評估清單 (Excel 評估)",
         "🎯 Portfolio Top 15 核心投組推薦", 
@@ -176,7 +174,7 @@ if 'df_res' in st.session_state and not st.session_state['df_res'].empty:
                         * **財務體質 (Piotroski F-Score)**: `{row['Piotroski F']}` (衡量獲利、營運效率與財務結構)
                         * **建議倉位配置**: `{row['建議倉位比例']}` (約 `{row['建議配置金額 (€)']:,} €`)
                         * **技術與量價診斷**: 
-                          該標的經量化引擎綜合評估：IC 預測動能為 `{row['量化預測 IC']}`，夏普比率達 `{row['Sharpe Ratio']}`，Piotroski F-Score 財務體質為 `{row['Piotroski F']}`，Altman Z 破產預警分數為 `{row['Altman Z']}`。目前處於 `{row['威科夫微觀結構']}`。多維度指標顯示其財務穩健且主力吸籌特徵明顯，建議嚴格執行 ATR 停損位 `{row['ATR 停損位']}`。
+                          該標的經量化引擎綜合評估：IC 預測動能為 `{row['量化預測 IC']}`，夏普比率達 `{row['Sharpe Ratio']}`，Piotroski F-Score 財務體質為 `{row['Piotroski F']}`，Altman Z 破產預警分數為 `{row['Altman Z']}`。目前處於 `{row['威科夫微觀結構']}`。多維度指標顯示其財務穩健且主力吸籌特徵明確，建議嚴格執行 ATR 停損位 `{row['ATR 停損位']}`。
                         """)
                         
         st.markdown("---")
