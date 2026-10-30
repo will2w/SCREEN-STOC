@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-現代多維度量化股票篩選與決策引擎 (具備詳細不合格原因追蹤與精確代碼映射)
+現代多維度量化股票篩選與決策引擎 (具備 Yahoo Finance 動態自動識別與搜尋功能)
 """
 
 import os
@@ -11,6 +11,7 @@ import numpy as np
 import yfinance as yf
 import requests
 import json
+import urllib.parse
 from datetime import datetime
 
 class QuantScreenerEngine:
@@ -28,8 +29,7 @@ class QuantScreenerEngine:
         except Exception as e:
             return [
                 "NVIDIA", "Microsoft", "Apple", "Alphabet", "Amazon", "Meta", "Tesla", "AMD",
-                "ASML", "TSMC (ADR)", "Schrodinger", "Vertiv", "Flex", "Entegris", "Celestica",
-                "Snowflake (A)", "Tuya (ADR) (A)", "Crowdstrike Holdings (A)", "Tianqi Lithium (H)", "SAP", "BP"
+                "ASML", "Pop Mart International", "Amkor Technology", "Quanta Services", "Onto Innovation"
             ]
 
     def get_current_market_state(self):
@@ -61,34 +61,38 @@ class QuantScreenerEngine:
         }
 
     def get_ticker_symbol(self, stock_name):
+        """
+        利用 Yahoo Finance 動態搜尋 API 自動識別公司名稱對應的股票代碼，
+        完全不需要在程式碼中寫死對應字典。
+        """
         name_clean = str(stock_name).strip()
-        mapping = {
-            "NVIDIA": "NVDA", "Tesla": "TSLA", "Microsoft": "MSFT", "Apple": "AAPL",
-            "Alphabet": "GOOGL", "Amazon": "AMZN", "Meta": "META", "AMD": "AMD",
-            "ASML": "ASML", "TSMC (ADR)": "TSM", "Schrodinger": "SDGR", "Vertiv": "VRT",
-            "Flex": "FLEX", "Entegris": "ENTG", "Celestica": "CLS", "Twist Bioscience": "TWST",
-            "AXT": "AXTI", "SUSS MicroTec": "SMHN.DE", "BigBear.ai": "BBAI",
-            "Hua Hong Semiconductor": "1347.HK", "Zhejiang Sanhua Intelligent": "002050.SZ",
-            "Mersen": "MRN.PA", "WTI Crude Oil 3x Lev USD (Acc)": "UCO",
-            "Snowflake (A)": "SNOW", "Snowflake": "SNOW",
-            "Tuya (ADR) (A)": "TUYA", "Tuya (ADR)": "TUYA", "Tuya": "TUYA",
-            "Crowdstrike Holdings (A)": "CRWD", "Crowdstrike Holdings": "CRWD",
-            "Tianqi Lithium (H)": "9696.HK", "Tianqi Lithium": "002466.SZ",
-            "SAP": "SAP", "BP": "BP"
-        }
-        if name_clean in mapping:
-            return mapping[name_clean]
         
-        # 自動處理括號 share class 後綴（如 A, H 等）
+        # 若本身已經是簡短代碼或包含交易所後綴（如 9992.HK, NVDA），直接返回
+        if (len(name_clean) <= 8 and ("." in name_clean or name_clean.isupper())):
+            return name_clean
+
+        # 清理名稱（移除括號如 (ADR), (A) 等以提升搜尋精準度）
+        search_query = name_clean.split('(')[0].strip()
+        
+        url = f"https://query2.finance.yahoo.com/v1/finance/search?q={urllib.parse.quote(search_query)}"
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        
+        try:
+            res = requests.get(url, headers=headers, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                quotes = data.get('quotes', [])
+                if quotes:
+                    # 自動返回檢索到的第一個最相關股票代碼
+                    return quotes[0]['symbol']
+        except Exception:
+            pass
+
+        # 備用降級機制：若 API 查詢逾時，嘗試從括號中提取代碼或直接返回原字串
         if "(" in name_clean and ")" in name_clean:
             possible_ticker = name_clean.split("(")[-1].split(")")[0].strip()
             if len(possible_ticker) > 1:
                 return possible_ticker
-            else:
-                base_name = name_clean.rsplit("(", 1)[0].strip()
-                if base_name in mapping:
-                    return mapping[base_name]
-                return base_name
 
         return name_clean
 
@@ -120,34 +124,29 @@ class QuantScreenerEngine:
                 curr_symbol = self.get_currency_symbol(currency)
 
                 if df.empty or len(df) < 5:
-                    ticker2 = yf.Ticker(stock.strip().upper())
-                    df = ticker2.history(period="6mo")
-                    if df.empty or len(df) < 5:
-                        results.append({
-                            "股票名稱": stock,
-                            "股票代碼": symbol,
-                            "最新現價": "N/A",
-                            "raw_price": 0.0,
-                            "貨幣": currency,
-                            "綜合評分": 0.0,
-                            "評估結果": "不合格",
-                            "投資建議": "暫時剔除 (Exclude)",
-                            "不合格原因": "Yahoo Finance 無法取得有效歷史數據或代碼不存在",
-                            "量化預測 IC": 0.0,
-                            "Sharpe Ratio": 0.0,
-                            "Piotroski F": "0/9",
-                            "Altman Z": 0.0,
-                            "威科夫微觀結構": "N/A",
-                            "建議倉位比例": "0%",
-                            "建議配置金額 (€)": 0.0,
-                            "ATR 停損位": "N/A",
-                            "狀態": "不合格 (數據異常)"
-                        })
-                        continue
-                    price = float(df['Close'].iloc[-1])
-                else:
-                    price = float(df['Close'].iloc[-1])
-
+                    results.append({
+                        "股票名稱": stock,
+                        "股票代碼": symbol,
+                        "最新現價": "N/A",
+                        "raw_price": 0.0,
+                        "貨幣": currency,
+                        "綜合評分": 0.0,
+                        "評估結果": "不合格",
+                        "投資建議": "暫時剔除 (Exclude)",
+                        "不合格原因": f"動態識別代碼 ({symbol}) 後無法取得有效歷史數據",
+                        "量化預測 IC": 0.0,
+                        "Sharpe Ratio": 0.0,
+                        "Piotroski F": "0/9",
+                        "Altman Z": 0.0,
+                        "威科夫微觀結構": "N/A",
+                        "建議倉位比例": "0%",
+                        "建議配置金額 (€)": 0.0,
+                        "ATR 停損位": "N/A",
+                        "狀態": "不合格 (數據異常)"
+                    })
+                    continue
+                
+                price = float(df['Close'].iloc[-1])
                 df['H-L'] = df['High'] - df['Low']
                 df['H-PC'] = abs(df['High'] - df['Close'].shift(1))
                 df['L-PC'] = abs(df['Low'] - df['Close'].shift(1))
@@ -166,7 +165,6 @@ class QuantScreenerEngine:
                 f_score = int(max(3, min(9, round(7 - volatility * 4 + (returns_3m * 2)))))
                 z_score = round(max(1.0, min(6.5, 3.5 + sharpe * 0.8 - volatility)), 2)
 
-                # 檢查流動性與價格條件
                 reasons = []
                 if recent_volume < 10000:
                     reasons.append(f"日均成交量過低 ({int(recent_volume):,} < 10,000)")
@@ -198,7 +196,6 @@ class QuantScreenerEngine:
                     })
                     continue
 
-                # 合格標的
                 raw_score = (
                     ic_score * 150.0 +
                     max(-1.0, sharpe) * 10.0 +
@@ -277,7 +274,6 @@ class QuantScreenerEngine:
         passed_df = df_result[df_result['狀態'].str.contains("通過")].sort_values(by="綜合評分", ascending=False).reset_index(drop=True)
         failed_df = df_result[~df_result['狀態'].str.contains("通過")].sort_values(by="綜合評分", ascending=False).reset_index(drop=True)
 
-        # 針對 Top 15 合格標的計算 100% 歸一化權重
         top_n = min(15, len(passed_df))
         passed_records = passed_df.to_dict(orient="records")
         raw_weights = []
@@ -307,7 +303,7 @@ class QuantScreenerEngine:
     def analyze_with_gemini(self, df_results, credit_impulse_status, m2_gap):
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
-            return "⚠️ 未檢測到 GEMINI_API_KEY 環境變數，無法生成 AI 深度診斷報告。請設定金鑰後重試。"
+            return "⚠️ 未檢測到 GEMINI_API_KEY 環境變數，無法生成 AI 深度診斷報告。"
 
         data_summary = df_results.head(15).to_dict(orient="records")
         prompt = f"""
@@ -317,12 +313,8 @@ class QuantScreenerEngine:
 - 超額 M2 剪刀差：+{m2_gap}%
 - Top 15 核心投資組合摘要（總和 100%）：{json.dumps(data_summary, ensure_ascii=False, indent=2)}
 
-請根據每一檔標的的真實量化預測 IC、夏普比率 (Sharpe Ratio)、Piotroski F-Score 財務體質、Altman Z 破產預警分數與威科夫微觀籌碼結構，進行真實且客觀的綜合評估與交叉驗證。請產出一份結構清晰、富有洞察力的【量化選股與 Portfolio Top 15 投研報告】，包含以下區塊：
-1. **2026 當前宏觀流動性與 Portfolio 核心構建總結**。
-2. **Top 15 核心推薦標的之真實指標表現與動態頭寸配置邏輯**。
-3. **風控指導與動態凱利頭寸執行紀律**。
+請產出一份結構清晰、富有洞察力的【量化選股與 Portfolio Top 15 投研報告】。
 """
-
         models = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
         headers = {"Content-Type": "application/json"}
         payload = {
@@ -340,4 +332,4 @@ class QuantScreenerEngine:
                         return res_json['candidates'][0]['content']['parts'][0]['text']
             except Exception:
                 continue
-        return "❌ Gemini AI 分析生成失敗請稍後再試。"
+        return "❌ Gemini AI 分析生成失敗，請稍後再試。"
