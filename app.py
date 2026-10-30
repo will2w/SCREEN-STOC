@@ -10,7 +10,7 @@ st.set_page_config(
 )
 
 st.title("🚀 現代多維度量化股票篩選與決策系統")
-st.markdown("*基於《核心股票分析技巧指南》：即時聯動 Yahoo Finance 數據、威科夫微觀結構與凱利公式頭寸管理。*")
+st.markdown("*基於《核心股票分析技巧指南》：即時聯動 Yahoo Finance、威科夫量價結構、凱利公式與 Gemini AI 深度投研診斷。*")
 
 engine = QuantScreenerEngine()
 watchlist = engine.watchlist
@@ -32,6 +32,10 @@ if st.sidebar.button("執行即時量化抓取與篩選", type="primary"):
         if df_res.empty:
             st.error("未能成功抓取選取標的的數據，請檢查網絡連線或標的代碼。")
         else:
+            # Save to session state so Gemini analysis can access it
+            st.session_state['df_res'] = df_res
+            st.session_state['credit_impulse'] = credit_impulse
+            
             col1, col2, col3 = st.columns(3)
             col1.metric("宏觀政策 Beta 評估", credit_impulse.split()[0], "流動性支持")
             col2.metric("超額 M2 剪刀差", f"+{m2_gap}%", "資產估值擴張")
@@ -41,10 +45,17 @@ if st.sidebar.button("執行即時量化抓取與篩選", type="primary"):
             st.dataframe(df_res, use_container_width=True)
             
             fig = px.bar(df_res, x='股票名稱', y='建議配置金額 (€)', color='量化預測 IC',
-                         title='各標的之最佳資本配置與量化因子 IC 評分 (基於真實市場數據)',
+                         title='各標的之最佳資本配置與量化因子 IC 評分',
                          labels={'建議配置金額 (€)': '配置金額 (€)', '量化預測 IC': 'Alpha IC 評分'})
             st.plotly_chart(fig, use_container_width=True)
-            
-            st.info("💡 **修正說明**：系統已成功修正數據源對接，現在直接抓取真實市場即時價格與波動率計算 ATR 與倉位。")
+
+# 🤖 Gemini AI 深度投研診斷區塊
+if 'df_res' in st.session_state and not st.session_state['df_res'].empty:
+    st.markdown("---")
+    st.markdown("### 🤖 Gemini AI 智能投研與選股深度診斷報告")
+    if st.button("✨ 一鍵生成 Gemini 專業投研分析與配置優化報告", type="primary"):
+        with st.spinner("正在調用 Gemini AI (gemini-3.8-flash) 進行多維度量化與基本面深度解讀..."):
+            ai_report = engine.analyze_with_gemini(st.session_state['df_res'], st.session_state['credit_impulse'])
+            st.markdown(ai_report)
 else:
-    st.info("👈 請在左側選取標的後，點擊「執行即時量化抓取與篩選」按鈕。")
+    st.info("👈 請先在左側選取標的並點擊「執行即時量化抓取與篩選」，隨後即可解鎖 Gemini AI 深度投研診斷報告。")
