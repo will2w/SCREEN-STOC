@@ -176,7 +176,7 @@ if 'df_res' in st.session_state and not st.session_state['df_res'].empty:
                         * **財務體質 (Piotroski F-Score)**: `{row['Piotroski F']}` (衡量獲利、營運效率與財務結構)
                         * **建議倉位配置**: `{row['建議倉位比例']}` (約 `{row['建議配置金額 (€)']:,} €`)
                         * **技術與量價診斷**: 
-                          該標的處於 `{row['威科夫微觀結構']}`。結合實時宏觀流動性與財務體質評分優異，主力資金吸籌特徵明確，建議嚴格執行 ATR 停損位 `{row['ATR 停損位']}`。
+                          該標的經量化引擎綜合評估：IC 預測動能為 `{row['量化預測 IC']}`，夏普比率達 `{row['Sharpe Ratio']}`，Piotroski F-Score 財務體質為 `{row['Piotroski F']}`，Altman Z 破產預警分數為 `{row['Altman Z']}`。目前處於 `{row['威科夫微觀結構']}`。多維度指標顯示其財務穩健且主力吸籌特徵明顯，建議嚴格執行 ATR 停損位 `{row['ATR 停損位']}`。
                         """)
                         
         st.markdown("---")
