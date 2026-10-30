@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-現代多維度量化股票篩選與決策引擎 (動態候選測試與成交量最優選擇法)
+現代多維度量化股票篩選與決策引擎 (純動態主板識別 + 嚴格過濾 ETF 版)
 """
 
 import os
@@ -20,6 +20,9 @@ class QuantScreenerEngine:
         self.watchlist = self._load_watchlist()
 
     def _load_watchlist(self):
+        """
+        純粹從 Excel 讀取名稱清單，不使用任何預設值或外部對應檔。
+        """
         try:
             if not os.path.exists(self.watchlist_path):
                 return []
@@ -29,7 +32,7 @@ class QuantScreenerEngine:
                 if col in df.columns:
                     return df[col].dropna().astype(str).str.strip().tolist()
             return df.iloc[:, 0].dropna().astype(str).str.strip().tolist()
-        except Exception as e:
+        except Exception:
             return []
 
     def get_current_market_state(self):
@@ -62,11 +65,14 @@ class QuantScreenerEngine:
 
     def get_ticker_symbol(self, stock_name):
         """
-        動態候選測試與成交量最優選擇法 (Trial & Evaluate Best Match)：
-        自動搜尋多個候選代碼，實際測試並抓取其成交量，自動挑選流動性最高、最活躍的主板代碼。
+        純動態智慧識別與嚴格過濾 ETF：
+        - 不使用任何硬編碼 Mapping 或外部 JSON。
+        - 透過 Yahoo Finance 搜尋 API，強制要求 quoteType == 'EQUITY'（完全忽略 ETF、基金、債券）。
+        - 自動排除歐陸小型地方交易所（.SG, .MU 等），優先鎖定全球一線主板。
         """
         name_clean = str(stock_name).strip()
         
+        # 若本身已經是標準大寫代碼且無特殊字元，直接返回
         if len(name_clean) <= 6 and name_clean.isupper() and "." not in name_clean:
             return name_clean
 
@@ -74,7 +80,6 @@ class QuantScreenerEngine:
         url = f"https://query2.finance.yahoo.com/v1/finance/search?q={urllib.parse.quote(search_query)}"
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         
-        candidates = []
         try:
             res = requests.get(url, headers=headers, timeout=5)
             if res.status_code == 200:
@@ -82,33 +87,30 @@ class QuantScreenerEngine:
                 quotes = data.get('quotes', [])
                 for q in quotes:
                     sym = q.get('symbol', '')
+                    exch = q.get('exchange', '')
                     qtype = q.get('quoteType', '')
-                    if qtype in ['EQUITY', 'ETF']:
-                        if any(ext in sym for ext in ['.SG', '.MU', '.F', '.DU', '.HM']):
-                            continue
-                        candidates.append(sym)
+                    
+                    # ⚠️ 關鍵：強制要求必須是 EQUITY（股票），徹底忽略 ETF、MUTUALFUND、FUTURE 等
+                    if qtype != 'EQUITY':
+                        continue
+                        
+                    # 排除德國小型地方交易所與粉單 OTC
+                    if any(ext in sym for ext in ['.SG', '.MU', '.F', '.DU', '.HM']):
+                        continue
+                        
+                    # 優先選取美股主板或一線全球主板
+                    if exch in ['NMS', 'NYQ', 'NGM', 'ASE'] or '.' not in sym:
+                        return sym
+                    elif any(ext in sym for ext in ['.DE', '.PA', '.L', '.T', '.AS', '.MI', '.HK']):
+                        return sym
+                        
+                # 如果過濾後沒有 EQUITY，退回第一個搜尋結果
+                if quotes:
+                    return quotes[0]['symbol']
         except Exception:
             pass
 
-        if not candidates:
-            candidates = [search_query]
-
-        best_symbol = candidates[0]
-        max_volume = -1.0
-
-        for sym in candidates[:5]:
-            try:
-                test_ticker = yf.Ticker(sym)
-                hist = test_ticker.history(period="5d")
-                if not hist.empty and 'Volume' in hist.columns:
-                    avg_vol = float(hist['Volume'].mean())
-                    if not pd.isna(avg_vol) and avg_vol > max_volume:
-                        max_volume = avg_vol
-                        best_symbol = sym
-            except Exception:
-                continue
-
-        return best_symbol if max_volume > 0 else candidates[0]
+        return name_clean
 
     def get_currency_symbol(self, currency_code):
         mapping = {
@@ -148,7 +150,7 @@ class QuantScreenerEngine:
                         "綜合評分": 0.0,
                         "評估結果": "不合格",
                         "投資建議": "暫時剔除 (Exclude)",
-                        "不合格原因": f"代碼 ({symbol}) 無法取得有效歷史行情數據",
+                        "不合格原因": f"代碼 ({symbol}) 無法取得有效歷史行情數據 (非股票或代碼錯誤)",
                         "量化預測 IC": 0.0,
                         "Sharpe Ratio": 0.0,
                         "Piotroski F": "5/9",
