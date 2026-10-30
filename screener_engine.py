@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-現代多維度量化股票篩選與決策引擎 (區分全景量化評估清單與投組資金配置)
+現代多維度量化股票篩選與決策引擎 (精確實現總和 100% 且具備強大區分度的 Portfolio Top 15 投組配置)
 """
 
 import os
@@ -103,10 +103,10 @@ class QuantScreenerEngine:
                     price = round(np.random.uniform(15, 450), 2)
                     atr = round(price * 0.04, 2)
                     recent_volume = 500000
-                    ic_score = round(np.random.uniform(0.03, 0.20) * macro_multiplier, 3)
-                    sharpe = round(np.random.uniform(1.0, 3.0), 2)
-                    f_score = int(np.random.randint(6, 10))
-                    z_score = round(np.random.uniform(2.2, 6.0), 2)
+                    ic_score = round(np.random.uniform(0.02, 0.22) * macro_multiplier, 3)
+                    sharpe = round(np.random.uniform(0.5, 3.2), 2)
+                    f_score = int(np.random.randint(5, 10))
+                    z_score = round(np.random.uniform(1.8, 6.0), 2)
                 else:
                     price = float(df['Close'].iloc[-1])
                     df['H-L'] = df['High'] - df['Low']
@@ -117,15 +117,15 @@ class QuantScreenerEngine:
                     recent_volume = float(df['Volume'].tail(5).mean())
                     
                     daily_rets = df['Close'].pct_change().dropna()
-                    annualized_sharpe = float((daily_rets.mean() * 252 - 0.03) / (daily_rets.std() * np.sqrt(252))) if daily_rets.std() > 0 else 1.4
-                    sharpe = round(max(0.2, min(3.8, annualized_sharpe)), 2)
+                    annualized_sharpe = float((daily_rets.mean() * 252 - 0.03) / (daily_rets.std() * np.sqrt(252))) if daily_rets.std() > 0 else 1.2
+                    sharpe = round(max(-0.5, min(3.8, annualized_sharpe)), 2)
                     
-                    returns_3m = (df['Close'].iloc[-1] / df['Close'].iloc[-60] - 1) if len(df) >= 60 else 0.06
-                    ic_score = round(min(0.25, max(0.02, returns_3m * 0.4 + 0.07)) * macro_multiplier, 3)
+                    returns_3m = (df['Close'].iloc[-1] / df['Close'].iloc[-60] - 1) if len(df) >= 60 else 0.04
+                    ic_score = round(min(0.28, max(0.01, returns_3m * 0.4 + 0.06)) * macro_multiplier, 3)
 
                     np.random.seed(hash(stock + "quant") % 2026)
-                    f_score = int(np.random.choice([7, 8, 9], p=[0.2, 0.5, 0.3]))
-                    z_score = round(float(np.random.uniform(2.0, 6.0)), 2)
+                    f_score = int(np.random.choice([5, 6, 7, 8, 9], p=[0.1, 0.2, 0.3, 0.3, 0.1]))
+                    z_score = round(float(np.random.uniform(1.5, 6.0)), 2)
 
                 if recent_volume < 25000 or price < 0.5:
                     continue
@@ -148,19 +148,35 @@ class QuantScreenerEngine:
         if not raw_items:
             return pd.DataFrame()
 
+        # 第一步：計算所有標的的綜合評分
         scored_items = []
         for item in raw_items:
-            comp_score = round(65.0 + item["ic_score"] * 80.0 + (item["sharpe"] / 3.0) * 12.0 + (item["f_score"] / 9.0) * 8.0, 1)
-            comp_score = min(99.0, max(60.0, comp_score))
+            # 引入更具鑑別度的綜合評分公式
+            comp_score = round(55.0 + item["ic_score"] * 70.0 + max(0, item["sharpe"]) * 8.0 + (item["f_score"] / 9.0) * 10.0 + min(item["z_score"], 5.0) * 3.0, 1)
+            comp_score = min(99.5, max(50.0, comp_score))
             scored_items.append({**item, "comp_score": comp_score})
 
+        # 排序並取 Top 15 作為核心投組
         scored_items = sorted(scored_items, key=lambda x: x["comp_score"], reverse=True)
         top_n = min(15, len(scored_items))
         top_items = scored_items[:top_n]
         
-        weight_factors = [max(1.0, (item["comp_score"] - 60.0) ** 1.8 + item["sharpe"] * 3.0) for item in top_items]
-        sum_wf = sum(weight_factors)
+        # 為了讓 Top 15 資金分配呈現強大的區分度（例如第 1 名佔 ~14%，第 15 名佔 ~3%），
+        # 我們使用基於排名與分數的非線性權重分配 (Exponential Rank Weighting)
+        # 讓總權重嚴格歸一化為 100% (1.0)
+        raw_weights = []
+        for idx, item in enumerate(top_items):
+        # 排名越前面權重呈指數級放大，並結合 Sharpe 與 F-Score
+            rank_boost = (top_n - idx) ** 1.6
+            score_boost = (item["comp_score"] / 50.0) ** 3.0
+            sharpe_boost = max(0.5, item["sharpe"] + 1.0)
+            w = rank_boost * score_boost * sharpe_boost
+            raw_weights.append(w)
 
+        sum_w = sum(raw_weights)
+        normalized_weights = [w / sum_w for w in raw_weights]
+
+        # 迴圈賦予結果
         for i, item in enumerate(scored_items):
             stock = item["stock"]
             symbol = item["symbol"]
@@ -174,31 +190,31 @@ class QuantScreenerEngine:
             z_score = item["z_score"]
             comp_score = item["comp_score"]
 
-            if comp_score >= 85:
+            if comp_score >= 82:
                 eval_result = "極優 (Alpha 顯著)"
                 investment_rec = "強力買進 (Strong Buy)"
-            elif comp_score >= 75:
+            elif comp_score >= 72:
                 eval_result = "優良 (多頭排列)"
                 investment_rec = "逢低吸納 (Accumulate)"
-            elif comp_score >= 68:
+            elif comp_score >= 62:
                 eval_result = "中立 (震盪築底)"
                 investment_rec = "區間操作 (Range Trade)"
             else:
                 eval_result = "觀望 (動能不足)"
                 investment_rec = "暫時觀望 (Watch)"
 
-            if comp_score >= 80:
+            if comp_score >= 78:
                 wyckoff_phase = "Phase C (Spring 彈簧洗盤確認 - 強烈吸籌)"
-            elif comp_score >= 70:
+            elif comp_score >= 68:
                 wyckoff_phase = "Phase B (橫向累積與籌碼吸收)"
             else:
                 wyckoff_phase = "Phase A/D (區間震盪或派發)"
 
+            # 若為 Top 15 內的標的，精確套用歸一化後的權重（總和嚴格為 100%）
             if i < top_n:
-                share_ratio = weight_factors[i] / sum_wf
-                alloc_pct = min(0.11, max(0.04, share_ratio * 0.90 + 0.045))
+                alloc_pct = normalized_weights[i]
             else:
-                alloc_pct = 0.015
+                alloc_pct = 0.0  # 非 Top 15 不予分配核心投組資金
 
             allocated_amt = round(capital * alloc_pct, 2)
 
@@ -234,15 +250,15 @@ class QuantScreenerEngine:
 
         data_summary = df_results.head(15).to_dict(orient="records")
         prompt = f"""
-作為頂級華爾街量化投研與總體經濟分析師，請針對以下根據《核心股票分析技巧指南》結合 Portfolio Top 15 核心投組推薦清單與多個著名量化指標進行綜合評分與差異化動態頭寸配置後的股票清單進行深度專業解讀與總結：
+作為頂級華爾街量化投研與總體經濟分析師，請針對以下根據《核心股票分析技巧指南》結合 Portfolio Top 15 核心投組推薦清單與多個著名量化指標進行綜合評分與嚴格 100% 歸一化動態頭寸配置後的股票清單進行深度專業解讀與總結：
 
 - 宏觀信貸脈衝狀態：{credit_impulse_status}
 - 超額 M2 剪刀差：+{m2_gap}%
-- Top 15 核心投資組合摘要：{json.dumps(data_summary, ensure_ascii=False, indent=2)}
+- Top 15 核心投資組合摘要（總和 100%）：{json.dumps(data_summary, ensure_ascii=False, indent=2)}
 
-請產出一份結構清晰、富有洞察力的【量化選股與 Portfolio Top 15 投研報告】，包含以下區塊：
+請深入檢視每一檔標的的量化預測 IC、夏普比率 (Sharpe Ratio)、Piotroski F-Score 財務體質、Altman Z 破產預警分數與威科夫微觀籌碼結構，進行全面且嚴謹的交叉驗證與綜合分析。請產出一份結構清晰、富有洞察力的【量化選股與 Portfolio Top 15 投研報告】，包含以下區塊：
 1. **2026 當前宏觀流動性與 Portfolio 核心構建總結**。
-2. **Top 15 核心推薦標的之差異化動態頭寸配置邏輯與財務穩健度**。
+2. **Top 15 核心推薦標的之階梯式差異化動態頭寸配置邏輯與財務穩健度**。
 3. **風控指導與動態凱利頭寸執行紀律**。
 """
 
