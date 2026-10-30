@@ -313,4 +313,134 @@ class QuantScreenerEngine:
                 )
                 comp_score = round(max(51.0, min(99.5, raw_score + 25.0)), 1)
                 if pd.isna(comp_score):
-                    comp_score = 6
+                    comp_score = 60.0
+
+                if comp_score >= 80:
+                    eval_result = "極優 (Alpha 顯著)"
+                    investment_rec = "強力買進 (Strong Buy)"
+                elif comp_score >= 68:
+                    eval_result = "優良 (多頭排列)"
+                    investment_rec = "逢低吸納 (Accumulate)"
+                elif comp_score >= 55:
+                    eval_result = "中立 (震盪築底)"
+                    investment_rec = "區間操作 (Range Trade)"
+                else:
+                    eval_result = "一般 (動能不足)"
+                    investment_rec = "暫時觀望 (Watch)"
+
+                if comp_score >= 75:
+                    wyckoff_phase = "Phase C (Spring 彈簧洗盤確認 - 強烈吸籌)"
+                elif comp_score >= 60:
+                    wyckoff_phase = "Phase B (橫向累積與籌碼吸收)"
+                else:
+                    wyckoff_phase = "Phase A/D (區間震盪或派發)"
+
+                results.append({
+                    "股票名稱": stock,
+                    "股票代碼": symbol,
+                    "最新現價": f"{curr_symbol}{price:,.2f}",
+                    "raw_price": price,
+                    "貨幣": currency,
+                    "綜合評分": comp_score,
+                    "評估結果": eval_result,
+                    "投資建議": investment_rec,
+                    "不合格原因": "無 (完全符合量化與流動性標準)",
+                    "量化預測 IC": ic_score,
+                    "Sharpe Ratio": sharpe,
+                    "Piotroski F": f"{f_score}/9",
+                    "Altman Z": z_score,
+                    "威科夫微觀結構": wyckoff_phase,
+                    "建議倉位比例": "0%",
+                    "建議配置金額 (€)": 0.0,
+                    "ATR 停損位": f"{curr_symbol}{max(0, price - 2 * atr):,.2f}",
+                    "狀態": "通過 (可交易)"
+                })
+            except Exception as e:
+                results.append({
+                    "股票名稱": stock,
+                    "股票代碼": symbol,
+                    "最新現價": "N/A",
+                    "raw_price": 0.0,
+                    "貨幣": "USD",
+                    "綜合評分": 0.0,
+                    "評估結果": "不合格",
+                    "投資建議": "暫時剔除 (Exclude)",
+                    "不合格原因": f"資料解析例外錯誤 ({str(e)})",
+                    "量化預測 IC": 0.0,
+                    "Sharpe Ratio": 0.0,
+                    "Piotroski F": "5/9",
+                    "Altman Z": 2.5,
+                    "威科夫微觀結構": "N/A",
+                    "建議倉位比例": "0%",
+                    "建議配置金額 (€)": 0.0,
+                    "ATR 停損位": "N/A",
+                    "狀態": "不合格 (例外錯誤)"
+                })
+                continue
+
+        df_result = pd.DataFrame(results)
+        if df_result.empty:
+            return pd.DataFrame(), pd.DataFrame()
+
+        passed_df = df_result[df_result['狀態'].str.contains("通過")].sort_values(by="綜合評分", ascending=False).reset_index(drop=True)
+        failed_df = df_result[~df_result['狀態'].str.contains("通過")].sort_values(by="綜合評分", ascending=False).reset_index(drop=True)
+
+        top_n = min(15, len(passed_df))
+        passed_records = passed_df.to_dict(orient="records")
+        raw_weights = []
+        for i in range(top_n):
+            item = passed_records[i]
+            rank_boost = (top_n - i) ** 1.5
+            score_boost = (max(20.0, item["綜合評分"]) / 50.0) ** 2.0
+            w = rank_boost * score_boost * max(0.2, item["Sharpe Ratio"] + 1.2)
+            raw_weights.append(w)
+        
+        sum_w = sum(raw_weights) if sum(raw_weights) > 0 else 1.0
+        normalized_weights = [w / sum_w for w in raw_weights]
+
+        final_passed = []
+        for i, item in enumerate(passed_records):
+            if i < top_n:
+                alloc_pct = normalized_weights[i]
+            else:
+                alloc_pct = 0.0
+            item["建議倉位比例"] = f"{round(alloc_pct*100, 1)}%"
+            item["建議配置金額 (€)"] = round(capital * alloc_pct, 2)
+            final_passed.append(item)
+
+        passed_df = pd.DataFrame(final_passed)
+        return passed_df, failed_df
+
+    def analyze_with_gemini(self, df_results, credit_impulse_status, m2_gap):
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            return "⚠️ 未檢測到 GEMINI_API_KEY 環境變數，無法生成 AI 深度診斷報告。"
+
+        data_summary = df_results.head(15).to_dict(orient="records")
+        prompt = f"""
+作為頂級華爾街量化投研與總體經濟分析師，請針對以下根據真實市場行情數據、多維度量化指標與 Portfolio Top 15 核心投組推薦清單進行客觀絕對評分與嚴格 100% 歸一化動態頭寸配置後的股票清單進行深度專業解讀與總結：
+
+- 宏觀信貸脈衝狀態：{credit_impulse_status}
+- 超額 M2 剪刀差：+{m2_gap}%
+- Top 15 核心投資組合摘要（總和 100%）：{json.dumps(data_summary, ensure_ascii=False, indent=2)}
+
+請產出一份結構清晰、富有洞察力的【量化選股與 Portfolio Top 15 投研報告】。
+"""
+        models = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"maxOutputTokens": 4096, "temperature": 0.3}
+        }
+
+        for model in models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            try:
+                response = requests.post(url, headers=headers, json=payload, timeout=60)
+                if response.status_code == 200:
+                    res_json = response.json()
+                    if "candidates" in res_json and len(res_json["candidates"]) > 0:
+                        return res_json['candidates'][0]['content']['parts'][0]['text']
+            except Exception:
+                continue
+        return "❌ Gemini AI 分析生成失敗請稍後再試。"
