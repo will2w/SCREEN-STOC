@@ -76,7 +76,7 @@ if run_btn:
         st.warning("請至少選取或載入一檔股票。")
     else:
         with st.spinner(f"正在連線 2026 實時市場數據並計算 Excel 全景量化評分與 Portfolio Top 15..."):
-            df_res = engine.run_screening(
+            df_res, df_unqualified = engine.run_screening_with_unqualified(
                 selected_stocks, 
                 capital=total_capital, 
                 credit_impulse_status=credit_impulse, 
@@ -84,44 +84,53 @@ if run_btn:
                 method=kelly_mode
             )
             
-        if df_res.empty:
+        if df_res.empty and df_unqualified.empty:
             st.error("篩選結果為空，請檢查網絡連線或標的流動性狀態。")
         else:
             st.session_state['df_res'] = df_res
+            st.session_state['df_unqualified'] = df_unqualified
             st.session_state['credit_impulse'] = credit_impulse
             st.session_state['m2_gap'] = m2_gap
 
 # 主畫面展示 (若已執行評估)
-if 'df_res' in st.session_state and not st.session_state['df_res'].empty:
+if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
     df_res = st.session_state['df_res']
+    df_unqualified = st.session_state['df_unqualified']
     
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("宏觀信貸脈衝 (實時)", st.session_state['credit_impulse'].split()[0], f"美債 {market_state['benchmark_tnx']}%")
     col2.metric("超額 M2 剪刀差", f"+{st.session_state['m2_gap']}%", "動態估值驅動")
-    col3.metric("評估合格標的", f"{len(df_res)} 檔", "多因子量化評分")
-    col4.metric("總配置資金", f"€ {total_capital:,.0f}", "分段凱利優化")
+    col3.metric("評估合格標的", f"{len(df_res)} 檔", "多因子量化評分通過")
+    col4.metric("未通過 / 遭剔除", f"{len(df_unqualified)} 檔", "流動性或體質未達標")
     
-    # 精簡後的 4 個 Tab 專頁佈局：1. Excel全景量化評估(純指標) | 2. Portfolio Top 15 核心投組推薦 | 3. 投資建議與倉位配置總覽 | 4. 技術分析與 AI 總結
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📊 全景量化評估清單 (Excel 評估)",
-        "🎯 Portfolio Top 15 核心投組推薦", 
+    # 5 個 Tab 專頁佈局
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📊 合格全景量化清單",
+        "⚠️ 未通過檢驗 / 遭剔除清單",
+        "🎯 Portfolio Top 15 核心投組", 
         "💰 投資建議與倉位配置總覽", 
         "🏆 分項技術分析與 AI 總結"
     ])
     
     with tab1:
-        st.markdown("## 📊 股票池全景量化評估清單 (Excel 全部股票)")
-        st.markdown("*本頁面專門針對 Excel 載入的全部股票進行多維度量化指標評估（包含夏普比率、Piotroski F-Score、Altman Z 與威科夫結構），純粹進行量化體質與動能分析，不涉及資金比例與分配金額。*")
-        
-        excel_view_df = df_res.drop(columns=['raw_price', '貨幣', '建議倉位比例', '建議配置金額 (€)'], errors='ignore')
+        st.markdown("## 📊 通過多維度量化檢驗之合格股票池")
+        st.markdown("*本頁面展示所有成功通過流動性、財務體質與動能檢驗的合格標的。*")
+        excel_view_df = df_res.drop(columns=['raw_price', '貨幣', '建議倉位比例', '建議配置金額 (€)', '不合格原因'], errors='ignore')
         st.dataframe(excel_view_df, use_container_width=True, height=600)
         
     with tab2:
-        st.markdown("## 🎯 Portfolio Top 15 核心投組推薦")
-        st.markdown("*本專頁專門展示經過多維度量化引擎、夏普比率、Piotroski F-Score 與凱利公式計算後，最具投資價值的 **Top 15 核心資產配置組合與動態頭寸配置**。*")
+        st.markdown("## ⚠️ 未通過檢驗 / 遭剔除之標的清單與原因")
+        st.markdown("*本頁面獨立展示因日均成交量過低、股價過低或數據異常而被系統過濾並剔除的標的，並詳細列出不合格原因。*")
+        if df_unqualified.empty:
+            st.info("🎉 太棒了！目前選取的股票池中沒有被剔除的不合格標的。")
+        else:
+            unqualified_display = df_unqualified.drop(columns=['raw_price', '貨幣', '建議倉位比例', '建議配置金額 (€)'], errors='ignore')
+            st.dataframe(unqualified_display, use_container_width=True, height=550)
         
+    with tab3:
+        st.markdown("## 🎯 Portfolio Top 15 核心投組推薦")
         top15_df = df_res.head(15).reset_index(drop=True)
-        top15_display = top15_df.drop(columns=['raw_price', '貨幣'], errors='ignore')
+        top15_display = top15_df.drop(columns=['raw_price', '貨幣', '不合格原因'], errors='ignore')
         
         col_t1, col_t2 = st.columns([3, 1])
         with col_t2:
@@ -140,7 +149,7 @@ if 'df_res' in st.session_state and not st.session_state['df_res'].empty:
         )
         st.plotly_chart(fig_top15, use_container_width=True)
         
-    with tab3:
+    with tab4:
         st.markdown("### 💰 投資建議與動態資金配置總覽")
         rec_summary = df_res.groupby('投資建議').agg(
             標的數量=('股票名稱', 'count'),
@@ -156,7 +165,7 @@ if 'df_res' in st.session_state and not st.session_state['df_res'].empty:
             fig_pie = px.pie(rec_summary, names='投資建議', values='總配置金額', title='各投資建議類別之資本配置佔比')
             st.plotly_chart(fig_pie, use_container_width=True)
             
-    with tab4:
+    with tab5:
         st.markdown("### 🏆 依投資建議分類之深度技術分析與 AI 總結")
         rec_types = df_res['投資建議'].unique()
         for rec in rec_types:
@@ -190,4 +199,4 @@ if 'df_res' in st.session_state and not st.session_state['df_res'].empty:
                 )
                 st.markdown(ai_report)
 else:
-    st.info("👈 請在左側側邊欄點擊「執行全景量化篩選與指標評估」按鈕，產出包含 Excel 全景量化評估與 Portfolio Top 15 核心投組推薦的精簡專業系統。")
+    st.info("👈 請在左側側邊欄點擊「執行全景量化篩選與指標評估」按鈕，產出包含合格清單、未通過檢驗清單與 Portfolio Top 15 核心投組的完整專業系統。")
