@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-現代多維度量化股票篩選與決策引擎 (修復括號 share class 誤判代碼問題)
+現代多維度量化股票篩選與決策引擎 (具備詳細不合格原因追蹤與精確代碼映射)
 """
 
 import os
@@ -62,7 +62,6 @@ class QuantScreenerEngine:
 
     def get_ticker_symbol(self, stock_name):
         name_clean = str(stock_name).strip()
-        
         mapping = {
             "NVIDIA": "NVDA", "Tesla": "TSLA", "Microsoft": "MSFT", "Apple": "AAPL",
             "Alphabet": "GOOGL", "Amazon": "AMZN", "Meta": "META", "AMD": "AMD",
@@ -80,6 +79,7 @@ class QuantScreenerEngine:
         if name_clean in mapping:
             return mapping[name_clean]
         
+        # 自動處理括號 share class 後綴（如 A, H 等）
         if "(" in name_clean and ")" in name_clean:
             possible_ticker = name_clean.split("(")[-1].split(")")[0].strip()
             if len(possible_ticker) > 1:
@@ -99,12 +99,11 @@ class QuantScreenerEngine:
         }
         return mapping.get(currency_code, currency_code + " ")
 
-    def run_screening(self, selected_stocks, capital=100000, credit_impulse_status="Expansion", m2_gap=1.8, method="Quarter Kelly"):
+    def run_screening_with_unqualified(self, selected_stocks, capital=100000, credit_impulse_status="Expansion", m2_gap=1.8, method="Quarter Kelly"):
         results = []
         macro_multiplier = 1.2 if "Expansion" in credit_impulse_status else (1.0 if "Neutral" in credit_impulse_status else 0.8)
         macro_multiplier *= (1.0 + m2_gap * 0.03)
         
-        raw_items = []
         for stock in selected_stocks:
             symbol = self.get_ticker_symbol(stock)
             try:
@@ -124,6 +123,26 @@ class QuantScreenerEngine:
                     ticker2 = yf.Ticker(stock.strip().upper())
                     df = ticker2.history(period="6mo")
                     if df.empty or len(df) < 5:
+                        results.append({
+                            "股票名稱": stock,
+                            "股票代碼": symbol,
+                            "最新現價": "N/A",
+                            "raw_price": 0.0,
+                            "貨幣": currency,
+                            "綜合評分": 0.0,
+                            "評估結果": "不合格",
+                            "投資建議": "暫時剔除 (Exclude)",
+                            "不合格原因": "Yahoo Finance 無法取得有效歷史數據或代碼不存在",
+                            "量化預測 IC": 0.0,
+                            "Sharpe Ratio": 0.0,
+                            "Piotroski F": "0/9",
+                            "Altman Z": 0.0,
+                            "威科夫微觀結構": "N/A",
+                            "建議倉位比例": "0%",
+                            "建議配置金額 (€)": 0.0,
+                            "ATR 停損位": "N/A",
+                            "狀態": "不合格 (數據異常)"
+                        })
                         continue
                     price = float(df['Close'].iloc[-1])
                 else:
@@ -147,116 +166,143 @@ class QuantScreenerEngine:
                 f_score = int(max(3, min(9, round(7 - volatility * 4 + (returns_3m * 2)))))
                 z_score = round(max(1.0, min(6.5, 3.5 + sharpe * 0.8 - volatility)), 2)
 
-                if recent_volume < 10000 or price < 0.5:
+                # 檢查流動性與價格條件
+                reasons = []
+                if recent_volume < 10000:
+                    reasons.append(f"日均成交量過低 ({int(recent_volume):,} < 10,000)")
+                if price < 0.5:
+                    reasons.append(f"股價過低 ($ {price:.2f} < $0.5)")
+
+                if reasons:
+                    raw_score = (ic_score * 150.0 + max(-1.0, sharpe) * 10.0 + (f_score / 9.0) * 30.0 + min(z_score, 6.0) * 4.0)
+                    comp_score = round(max(10.0, min(50.0, raw_score + 10.0)), 1)
+                    results.append({
+                        "股票名稱": stock,
+                        "股票代碼": symbol,
+                        "最新現價": f"{curr_symbol}{price:,.2f}",
+                        "raw_price": price,
+                        "貨幣": currency,
+                        "綜合評分": comp_score,
+                        "評估結果": "不合格",
+                        "投資建議": "暫時迴避 (Avoid)",
+                        "不合格原因": "；".join(reasons),
+                        "量化預測 IC": ic_score,
+                        "Sharpe Ratio": sharpe,
+                        "Piotroski F": f"{f_score}/9",
+                        "Altman Z": z_score,
+                        "威科夫微觀結構": "Phase A/D (流動性枯竭)",
+                        "建議倉位比例": "0%",
+                        "建議配置金額 (€)": 0.0,
+                        "ATR 停損位": f"{curr_symbol}{max(0, price - 2 * atr):,.2f}",
+                        "狀態": "不合格 (流動性不足)"
+                    })
                     continue
 
-                raw_items.append({
-                    "stock": stock,
-                    "symbol": symbol,
-                    "price": price,
-                    "atr": atr,
-                    "currency": currency,
-                    "curr_symbol": curr_symbol,
-                    "ic_score": ic_score,
-                    "sharpe": sharpe,
-                    "f_score": f_score,
-                    "z_score": z_score
+                # 合格標的
+                raw_score = (
+                    ic_score * 150.0 +
+                    max(-1.0, sharpe) * 10.0 +
+                    (f_score / 9.0) * 30.0 +
+                    min(z_score, 6.0) * 4.0
+                )
+                comp_score = round(max(51.0, min(99.5, raw_score + 25.0)), 1)
+
+                if comp_score >= 80:
+                    eval_result = "極優 (Alpha 顯著)"
+                    investment_rec = "強力買進 (Strong Buy)"
+                elif comp_score >= 68:
+                    eval_result = "優良 (多頭排列)"
+                    investment_rec = "逢低吸納 (Accumulate)"
+                elif comp_score >= 55:
+                    eval_result = "中立 (震盪築底)"
+                    investment_rec = "區間操作 (Range Trade)"
+                else:
+                    eval_result = "一般 (動能不足)"
+                    investment_rec = "暫時觀望 (Watch)"
+
+                if comp_score >= 75:
+                    wyckoff_phase = "Phase C (Spring 彈簧洗盤確認 - 強烈吸籌)"
+                elif comp_score >= 60:
+                    wyckoff_phase = "Phase B (橫向累積與籌碼吸收)"
+                else:
+                    wyckoff_phase = "Phase A/D (區間震盪或派發)"
+
+                results.append({
+                    "股票名稱": stock,
+                    "股票代碼": symbol,
+                    "最新現價": f"{curr_symbol}{price:,.2f}",
+                    "raw_price": price,
+                    "貨幣": currency,
+                    "綜合評分": comp_score,
+                    "評估結果": eval_result,
+                    "投資建議": investment_rec,
+                    "不合格原因": "無 (完全符合量化與流動性標準)",
+                    "量化預測 IC": ic_score,
+                    "Sharpe Ratio": sharpe,
+                    "Piotroski F": f"{f_score}/9",
+                    "Altman Z": z_score,
+                    "威科夫微觀結構": wyckoff_phase,
+                    "建議倉位比例": "0%",
+                    "建議配置金額 (€)": 0.0,
+                    "ATR 停損位": f"{curr_symbol}{max(0, price - 2 * atr):,.2f}",
+                    "狀態": "通過 (可交易)"
                 })
             except Exception as e:
+                results.append({
+                    "股票名稱": stock,
+                    "股票代碼": symbol,
+                    "最新現價": "N/A",
+                    "raw_price": 0.0,
+                    "貨幣": "USD",
+                    "綜合評分": 0.0,
+                    "評估結果": "不合格",
+                    "投資建議": "暫時剔除 (Exclude)",
+                    "不合格原因": f"連線異常或資料解析錯誤 ({str(e)})",
+                    "量化預測 IC": 0.0,
+                    "Sharpe Ratio": 0.0,
+                    "Piotroski F": "0/9",
+                    "Altman Z": 0.0,
+                    "威科夫微觀結構": "N/A",
+                    "建議倉位比例": "0%",
+                    "建議配置金額 (€)": 0.0,
+                    "ATR 停損位": "N/A",
+                    "狀態": "不合格 (例外錯誤)"
+                })
                 continue
 
-        if not raw_items:
-            return pd.DataFrame()
+        df_result = pd.DataFrame(results)
+        if df_result.empty:
+            return pd.DataFrame(), pd.DataFrame()
 
-        scored_items = []
-        for item in raw_items:
-            raw_score = (
-                item["ic_score"] * 150.0 +
-                max(-1.0, item["sharpe"]) * 10.0 +
-                (item["f_score"] / 9.0) * 30.0 +
-                min(item["z_score"], 6.0) * 4.0
-            )
-            comp_score = round(max(15.0, min(99.5, raw_score + 25.0)), 1)
-            scored_items.append({**item, "comp_score": comp_score})
+        passed_df = df_result[df_result['狀態'].str.contains("通過")].sort_values(by="綜合評分", ascending=False).reset_index(drop=True)
+        failed_df = df_result[~df_result['狀態'].str.contains("通過")].sort_values(by="綜合評分", ascending=False).reset_index(drop=True)
 
-        scored_items = sorted(scored_items, key=lambda x: x["comp_score"], reverse=True)
-        top_n = min(15, len(scored_items))
-        top_items = scored_items[:top_n]
-        
+        # 針對 Top 15 合格標的計算 100% 歸一化權重
+        top_n = min(15, len(passed_df))
+        passed_records = passed_df.to_dict(orient="records")
         raw_weights = []
-        for idx, item in enumerate(top_items):
-            rank_boost = (top_n - idx) ** 1.5
-            score_boost = (max(20.0, item["comp_score"]) / 50.0) ** 2.0
-            w = rank_boost * score_boost * max(0.2, item["sharpe"] + 1.2)
+        for i in range(top_n):
+            item = passed_records[i]
+            rank_boost = (top_n - i) ** 1.5
+            score_boost = (max(20.0, item["綜合評分"]) / 50.0) ** 2.0
+            w = rank_boost * score_boost * max(0.2, item["Sharpe Ratio"] + 1.2)
             raw_weights.append(w)
-
-        sum_w = sum(raw_weights)
+        
+        sum_w = sum(raw_weights) if sum(raw_weights) > 0 else 1.0
         normalized_weights = [w / sum_w for w in raw_weights]
 
-        for i, item in enumerate(scored_items):
-            stock = item["stock"]
-            symbol = item["symbol"]
-            price = item["price"]
-            atr = item["atr"]
-            curr_symbol = item["curr_symbol"]
-            currency = item["currency"]
-            ic_score = item["ic_score"]
-            sharpe = item["sharpe"]
-            f_score = item["f_score"]
-            z_score = item["z_score"]
-            comp_score = item["comp_score"]
-
-            if comp_score >= 80:
-                eval_result = "極優 (Alpha 顯著)"
-                investment_rec = "強力買進 (Strong Buy)"
-            elif comp_score >= 68:
-                eval_result = "優良 (多頭排列)"
-                investment_rec = "逢低吸納 (Accumulate)"
-            elif comp_score >= 55:
-                eval_result = "中立 (震盪築底)"
-                investment_rec = "區間操作 (Range Trade)"
-            else:
-                eval_result = "觀望 (動能不足)"
-                investment_rec = "暫時觀望 (Watch)"
-
-            if comp_score >= 75:
-                wyckoff_phase = "Phase C (Spring 彈簧洗盤確認 - 強烈吸籌)"
-            elif comp_score >= 60:
-                wyckoff_phase = "Phase B (橫向累積與籌碼吸收)"
-            else:
-                wyckoff_phase = "Phase A/D (區間震盪或派發)"
-
+        final_passed = []
+        for i, item in enumerate(passed_records):
             if i < top_n:
                 alloc_pct = normalized_weights[i]
             else:
                 alloc_pct = 0.0
+            item["建議倉位比例"] = f"{round(alloc_pct*100, 1)}%"
+            item["建議配置金額 (€)"] = round(capital * alloc_pct, 2)
+            final_passed.append(item)
 
-            allocated_amt = round(capital * alloc_pct, 2)
-
-            results.append({
-                "股票名稱": stock,
-                "股票代碼": symbol,
-                "最新現價": f"{curr_symbol}{price:,.2f}",
-                "raw_price": price,
-                "貨幣": currency,
-                "綜合評分": comp_score,
-                "評估結果": eval_result,
-                "投資建議": investment_rec,
-                "量化預測 IC": ic_score,
-                "Sharpe Ratio": sharpe,
-                "Piotroski F": f"{f_score}/9",
-                "Altman Z": z_score,
-                "威科夫微觀結構": wyckoff_phase,
-                "建議倉位比例": f"{round(alloc_pct*100, 1)}%",
-                "建議配置金額 (€)": allocated_amt,
-                "ATR 停損位": f"{curr_symbol}{max(0, price - 2 * atr):,.2f}",
-                "狀態": "通過 (可交易)"
-            })
-
-        df_result = pd.DataFrame(results)
-        if not df_result.empty:
-            df_result = df_result.sort_values(by="綜合評分", ascending=False).reset_index(drop=True)
-        return df_result
+        passed_df = pd.DataFrame(final_passed)
+        return passed_df, failed_df
 
     def analyze_with_gemini(self, df_results, credit_impulse_status, m2_gap):
         api_key = os.getenv("GEMINI_API_KEY")
@@ -294,4 +340,4 @@ class QuantScreenerEngine:
                         return res_json['candidates'][0]['content']['parts'][0]['text']
             except Exception:
                 continue
-        return "❌ Gemini AI 分析生成失敗，請稍後再試。"
+        return "❌ Gemini AI 分析生成失敗請稍後再試。"
