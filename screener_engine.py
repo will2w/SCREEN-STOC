@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-現代多維度量化股票篩選與決策引擎 (雙軌備援版：yfinance 主通道 + yahooquery 高效備援)
+現代多維度量化股票篩選與決策引擎 (外部動態檔案對應版：yfinance 主通道 + yahooquery 高效備援)
 """
 
 import os
@@ -22,6 +22,7 @@ class QuantScreenerEngine:
     def __init__(self, watchlist_path="Watchlist_Stocks.xlsx", cache_path="symbol_cache.json"):
         self.watchlist_path = watchlist_path
         self.cache_path = cache_path
+        self.dynamic_symbol_map = {}
         self._symbol_cache = self._load_symbol_cache()
         self._history_cache = {} 
         self.watchlist = self._load_watchlist()
@@ -63,21 +64,34 @@ class QuantScreenerEngine:
             pass
 
     def _load_watchlist(self):
-        """優先從本地或預設路徑讀取股票清單"""
+        """
+        從外部 CSV 或 Excel 動態載入清單，並自動建立「名稱 -> 代碼」動態對應表（完全不寫死字典）
+        """
         try:
             if os.path.exists("Watchlist_Stocks.csv"):
                 df = pd.read_csv("Watchlist_Stocks.csv")
             elif os.path.exists(self.watchlist_path):
                 df = pd.read_excel(self.watchlist_path, sheet_name="Watchlist Stocks")
             else:
-                return ["NVIDIA", "Apple", "Microsoft", "BAS.DE", "1347.HK", "TSM"]
+                return ["NVIDIA", "AAPL", "BAS.DE", "1347.HK"]
             
-            for col in ["Stock Name", "Symbol", "Ticker", "股票名稱", "代碼"]:
+            # 從檔案動態建立對應字典
+            self.dynamic_symbol_map = {}
+            if "Stock Name" in df.columns and "Symbol" in df.columns:
+                for _, row in df.iterrows():
+                    name = str(row["Stock Name"]).strip()
+                    sym = str(row["Symbol"]).strip()
+                    self.dynamic_symbol_map[name] = sym
+                    self.dynamic_symbol_map[sym] = sym
+                return df["Stock Name"].dropna().astype(str).str.strip().tolist()
+            
+            for col in ["Symbol", "Ticker", "代碼", "Stock Name"]:
                 if col in df.columns:
                     return df[col].dropna().astype(str).str.strip().tolist()
             return df.iloc[:, 0].dropna().astype(str).str.strip().tolist()
         except Exception:
-            return ["NVIDIA", "Apple", "Microsoft", "BAS.DE", "1347.HK", "TSM"]
+            self.dynamic_symbol_map = {}
+            return ["NVIDIA", "AAPL", "BAS.DE", "1347.HK"]
 
     def get_current_market_state(self):
         try:
@@ -109,52 +123,34 @@ class QuantScreenerEngine:
         if name_clean in self._symbol_cache and self._symbol_cache[name_clean]:
             return self._symbol_cache[name_clean]
 
-        if len(name_clean) <= 10 and " " not in name_clean and ("." in name_clean or name_clean.isupper()):
+        # 1. 優先檢查從外部檔案動態載入的對應表
+        if self.dynamic_symbol_map and name_clean in self.dynamic_symbol_map:
+            resolved = self.dynamic_symbol_map[name_clean]
+            self._symbol_cache[name_clean] = resolved
+            return resolved
+            
+        # 2. 自動清洗括號與說明文字（例如 "BASF (德國 化工)" -> 檢查 "BASF" 是否在動態對應表中）
+        if "(" in name_clean and ")" in name_clean:
+            base_name = name_clean.split("(")[0].strip()
+            if self.dynamic_symbol_map and base_name in self.dynamic_symbol_map:
+                resolved = self.dynamic_symbol_map[base_name]
+                self._symbol_cache[name_clean] = resolved
+                return resolved
+            # 若不在對應表中，直接嘗試抓取括號內的代碼
+            possible_code = name_clean.split("(")[-1].split(")")[0].strip()
+            if len(possible_code) <= 10 and " " not in possible_code:
+                self._symbol_cache[name_clean] = possible_code
+                return possible_code
+
+        # 3. 如果本身已經是標準代碼格式（如 NVDA, BAS.DE, 1347.HK），直接回傳
+        if len(name_clean) <= 10 and ("." in name_clean or name_clean.isupper()):
+            self._symbol_cache[name_clean] = name_clean
             return name_clean
 
-        search_query = name_clean.split('(')[0].strip()
-        
-        # 🌐 全球核心代碼強效對應（解決港股、歐股搜尋失敗問題）
-        global_fallbacks = {
-            "華虹半導體": "1347.HK", "HUA HONG SEMI": "1347.HK",
-            "BASF": "BAS.DE", "E.ON": "EOAN.DE", "CECONOMY": "CEC.DE",
-            "IVECO": "IVG.MI", "NVIDIA": "NVDA", "EXASOL": "EXS.DE", "台積電": "TSM"
-        }
-        
-        upper_query = search_query.upper()
-        for key, sym in global_fallbacks.items():
-            if key in name_clean or key in upper_query:
-                self._symbol_cache[name_clean] = sym
-                self._save_symbol_cache()
-                return sym
-
-        url = f"https://query2.finance.yahoo.com/v1/finance/search?q={urllib.parse.quote(search_query)}"
-        best_symbol = None
-
-        for attempt in range(2):
-            try:
-                time.sleep(random.uniform(0.3, 0.8) * (attempt + 1))
-                res = self.session.get(url, timeout=5)
-                if res.status_code == 200:
-                    data = res.json()
-                    for q in data.get('quotes', []):
-                        sym = q.get('symbol', '')
-                        if q.get('quoteType', '') == 'EQUITY' and not any(ext in sym for ext in ['.SG', '.MU', '.DU']):
-                            best_symbol = sym
-                            break
-                    if best_symbol:
-                        break
-            except Exception:
-                continue
-
-        if not best_symbol:
-            best_symbol = upper_query
-
-        if best_symbol:
-            self._symbol_cache[name_clean] = best_symbol
-            self._save_symbol_cache()
-            
-        return best_symbol
+        # 4. 最後防線：若檔案中找不到，回傳清理後的名稱進行查詢
+        clean_query = name_clean.split('(')[0].strip()
+        self._symbol_cache[name_clean] = clean_query
+        return clean_query
 
     def _fetch_chart_data(self, symbol, range_str="6mo"):
         """
@@ -163,45 +159,50 @@ class QuantScreenerEngine:
         2. 若超時、報錯或回傳空白，自動切換至 yahooquery 進行非同步備援抓取。
         """
         df = pd.DataFrame()
+        clean_symbol = str(symbol).strip()
         
         # ----------------------------------------------------
         # 防線一：yfinance & Chart API
         # ----------------------------------------------------
-        try:
-            time.sleep(random.uniform(0.3, 0.7))
-            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(symbol)}?range={range_str}&interval=1d"
-            res = self.session.get(url, timeout=5)
-            
-            if res.status_code == 200:
-                data = res.json()
-                result = data.get('chart', {}).get('result', [])
-                if result:
-                    res_dict = result[0]
-                    timestamps = res_dict.get('timestamp', [])
-                    indicators = res_dict.get('indicators', {}).get('quote', [{}])[0]
-                    if timestamps and indicators:
-                        df = pd.DataFrame({
-                            'Open': indicators.get('open', []),
-                            'High': indicators.get('high', []),
-                            'Low': indicators.get('low', []),
-                            'Close': indicators.get('close', []),
-                            'Volume': indicators.get('volume', [])
-                        }, index=pd.to_datetime(timestamps, unit='s'))
-                        df.dropna(subset=['Close'], inplace=True)
-            
-            if df.empty:
-                ticker = yf.Ticker(symbol, session=self.session)
-                df = ticker.history(period=range_str, timeout=5)
-        except Exception:
-            pass
+        for attempt in range(2):
+            try:
+                time.sleep(random.uniform(0.4, 0.9))
+                url = f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(clean_symbol)}?range={range_str}&interval=1d"
+                res = self.session.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=6)
+                
+                if res.status_code == 200:
+                    data = res.json()
+                    result = data.get('chart', {}).get('result', [])
+                    if result:
+                        res_dict = result[0]
+                        timestamps = res_dict.get('timestamp', [])
+                        indicators = res_dict.get('indicators', {}).get('quote', [{}])[0]
+                        if timestamps and indicators:
+                            df = pd.DataFrame({
+                                'Open': indicators.get('open', []),
+                                'High': indicators.get('high', []),
+                                'Low': indicators.get('low', []),
+                                'Close': indicators.get('close', []),
+                                'Volume': indicators.get('volume', [])
+                            }, index=pd.to_datetime(timestamps, unit='s'))
+                            df.dropna(subset=['Close'], inplace=True)
+                            if not df.empty:
+                                return df
+                
+                ticker = yf.Ticker(clean_symbol)
+                df = ticker.history(period=range_str, timeout=6)
+                if not df.empty and 'Close' in df.columns and not df['Close'].isnull().all():
+                    return df
+            except Exception:
+                pass
 
         # ----------------------------------------------------
         # 防線二：yahooquery 備援補救
         # ----------------------------------------------------
         if df.empty or 'Close' not in df.columns or df['Close'].isnull().all():
             try:
-                time.sleep(0.4)
-                yq = YQ_Ticker(symbol)
+                time.sleep(0.5)
+                yq = YQ_Ticker(clean_symbol)
                 yq_df = yq.history(period=range_str, interval="1d")
                 
                 if not yq_df.empty:
@@ -214,9 +215,11 @@ class QuantScreenerEngine:
                             'High': yq_df.get('high', yq_df['close']),
                             'Low': yq_df.get('low', yq_df['close']),
                             'Close': yq_df['close'],
-                            'Volume': yq_df.get('volume', 50000)
+                            'Volume': yq_df.get('volume', 100000)
                         }, index=pd.to_datetime(yq_df.index))
                         df.dropna(subset=['Close'], inplace=True)
+                        if not df.empty:
+                            return df
             except Exception:
                 pass
                 
