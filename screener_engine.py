@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-現代多維度量化股票篩選與決策引擎 (強化代碼格式驗證與非 EQUITY 資產攔截版)
+現代多維度量化股票篩選與決策引擎 (內建 Yahoo Chart API 高效備援通道)
 """
 
 import os
@@ -60,10 +60,9 @@ class QuantScreenerEngine:
 
     def get_current_market_state(self):
         try:
-            tnx = yf.Ticker("^TNX", session=self.session)
-            hist = tnx.history(period="1mo")
-            if not hist.empty:
-                current_tnx = float(hist['Close'].iloc[-1])
+            df_tnx = self._fetch_chart_data("^TNX", range_str="1mo")
+            if not df_tnx.empty:
+                current_tnx = float(df_tnx['Close'].iloc[-1])
             else:
                 current_tnx = 4.25
         except Exception:
@@ -87,29 +86,30 @@ class QuantScreenerEngine:
         }
 
     def get_ticker_symbol(self, stock_name):
-        """
-        強固型代碼解析：
-        嚴格過濾非 EQUITY 資產，並防止在搜尋 API 失敗時將公司全名誤用為代碼。
-        """
         name_clean = str(stock_name).strip()
         
-        if name_clean in self._symbol_cache:
+        if name_clean in self._symbol_cache and self._symbol_cache[name_clean]:
             return self._symbol_cache[name_clean]
 
-        # 若本身已是簡短標準代碼（如 SLDP, TUYA, RHM.DE），直接採用
         if len(name_clean) <= 8 and " " not in name_clean and ("." in name_clean or name_clean.isupper()):
-            self._symbol_cache[name_clean] = name_clean
-            self._save_symbol_cache()
             return name_clean
 
         search_query = name_clean.split('(')[0].strip()
         url = f"https://query2.finance.yahoo.com/v1/finance/search?q={urllib.parse.quote(search_query)}"
         
         best_symbol = None
+        is_rate_limited = False
+
         for attempt in range(2):
             try:
-                time.sleep(0.25 * (attempt + 1))
+                time.sleep(0.2 * (attempt + 1))
                 res = self.session.get(url, timeout=5)
+                
+                if res.status_code == 429:
+                    is_rate_limited = True
+                    time.sleep(1.0)
+                    continue
+                
                 if res.status_code == 200:
                     data = res.json()
                     quotes = data.get('quotes', [])
@@ -117,7 +117,6 @@ class QuantScreenerEngine:
                         sym = q.get('symbol', '')
                         qtype = q.get('quoteType', '')
                         
-                        # ⚠️ 嚴格排除非股票資產（如 ETF、ETN、基金、債券）
                         if qtype != 'EQUITY':
                             continue
                         if any(ext in sym for ext in ['.SG', '.MU', '.DU', '.HM']):
@@ -130,25 +129,56 @@ class QuantScreenerEngine:
             except Exception:
                 continue
 
-        # 🛡️ 防禦性檢查：若搜尋 API 失敗或找不到合法代碼，絕對不使用公司全名作為代碼
-        if not best_symbol or len(best_symbol) > 8 or " " in best_symbol:
+        if not best_symbol or len(best_symbol) > 10 or " " in best_symbol:
             upper_query = search_query.upper()
-            # 常見知名大廠智慧對應（防範 API 瞬間受限時的備援）
-            known_mapping = {
+            european_fallbacks = {
+                "BASF": "BAS.DE",
+                "E.ON": "EOAN.DE",
+                "CECONOMY": "CEC.DE",
+                "IVECO": "IVG.MI",
                 "NVIDIA": "NVDA",
-                "EXASOL": "EXS.DE",
-                "SOLID POWER": "SLDP",
-                "FIREFLY AEROSPACE": "FLY"
+                "EXASOL": "EXS.DE"
             }
-            if upper_query in known_mapping:
-                best_symbol = known_mapping[upper_query]
+            if upper_query in european_fallbacks:
+                best_symbol = european_fallbacks[upper_query]
             else:
-                # 若無法辨識且無有效代碼，回傳空字串以供後續標記為不合格，絕不帶入公司全名
                 best_symbol = ""
 
-        self._symbol_cache[name_clean] = best_symbol
-        self._save_symbol_cache()
+        if best_symbol and not is_rate_limited:
+            self._symbol_cache[name_clean] = best_symbol
+            self._save_symbol_cache()
+            
         return best_symbol
+
+    def _fetch_chart_data(self, symbol, range_str="6mo"):
+        """
+        🚀 方法一核心：直接請求 Yahoo Chart API 端點，繞過 yfinance 限制並提升抓取穩定度
+        """
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(symbol)}?range={range_str}&interval=1d"
+        try:
+            res = self.session.get(url, timeout=6)
+            if res.status_code == 200:
+                data = res.json()
+                result = data.get('chart', {}).get('result', [])
+                if result:
+                    res_dict = result[0]
+                    timestamps = res_dict.get('timestamp', [])
+                    indicators = res_dict.get('indicators', {}).get('quote', [{}])[0]
+                    
+                    if timestamps and indicators:
+                        df = pd.DataFrame({
+                            'Open': indicators.get('open', []),
+                            'High': indicators.get('high', []),
+                            'Low': indicators.get('low', []),
+                            'Close': indicators.get('close', []),
+                            'Volume': indicators.get('volume', [])
+                        }, index=pd.to_datetime(timestamps, unit='s'))
+                        
+                        df.dropna(subset=['Close'], inplace=True)
+                        return df
+        except Exception:
+            pass
+        return pd.DataFrame()
 
     def get_currency_symbol(self, currency_code):
         mapping = {
@@ -160,7 +190,6 @@ class QuantScreenerEngine:
     def _process_single_stock(self, stock, macro_multiplier):
         symbol = self.get_ticker_symbol(stock)
         
-        # 🛡️ 若代碼解析失敗或被識別為非股票資產，直接回報不合格，絕不嘗試抓取無效行情
         if not symbol:
             return {
                 "股票名稱": stock, "股票代碼": "N/A", "最新現價": "N/A", "raw_price": -1.0,
@@ -176,9 +205,14 @@ class QuantScreenerEngine:
             if symbol in self._history_cache:
                 df = self._history_cache[symbol]
             else:
-                time.sleep(0.15)
-                ticker = yf.Ticker(symbol, session=self.session)
-                df = ticker.history(period="6mo")
+                time.sleep(0.1)
+                # 優先使用 Chart API 抓取歷史行情
+                df = self._fetch_chart_data(symbol, range_str="6mo")
+                if df.empty:
+                    # 若 Chart API 失敗，降級使用 yfinance 作為第二備援
+                    ticker = yf.Ticker(symbol, session=self.session)
+                    df = ticker.history(period="6mo")
+                
                 if not df.empty and not df['Close'].isnull().all():
                     self._history_cache[symbol] = df
         except Exception:
@@ -187,11 +221,15 @@ class QuantScreenerEngine:
         try:
             currency = "USD"
             try:
+                # 嘗試透過 fast_info 獲取幣別
+                ticker = yf.Ticker(symbol, session=self.session)
                 fast_curr = ticker.fast_info.currency
                 if fast_curr and not pd.isna(fast_curr):
                     currency = fast_curr
             except Exception:
-                pass
+                # 若為歐洲交易所代碼自動判定歐元
+                if ".DE" in symbol or ".PA" in symbol or ".MI" in symbol:
+                    currency = "EUR"
             
             curr_symbol = self.get_currency_symbol(currency)
 
@@ -285,7 +323,7 @@ class QuantScreenerEngine:
             elif comp_score >= 55:
                 eval_result, investment_rec = "中立 (震盪築底)", "區間操作 (Range Trade)"
             else:
-                eval_result, investment_rec = "一般 (動من不足)", "暫時觀望 (Watch)"
+                eval_result, investment_rec = "一般 (動能不足)", "暫時觀望 (Watch)"
 
             if comp_score >= 75:
                 wyckoff_phase = "Phase C (Spring 彈簧洗盤確認 - 強烈吸籌)"
