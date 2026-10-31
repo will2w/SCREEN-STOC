@@ -2,10 +2,11 @@
 """
 screener_engine.py
 ------------------
-現代多維度量化股票篩選與決策引擎 (純動態主板識別 + 嚴格過濾 ETF 版)
+現代多維度量化股票篩選與決策引擎 (具備快取保護與強固異常降級)
 """
 
 import os
+import time
 import pandas as pd
 import numpy as np
 import yfinance as yf
@@ -13,16 +14,21 @@ import requests
 import json
 import urllib.parse
 from datetime import datetime
+from requests import Session
 
 class QuantScreenerEngine:
     def __init__(self, watchlist_path="Watchlist_Stocks.xlsx"):
         self.watchlist_path = watchlist_path
+        self._symbol_cache = {}  
+        self._history_cache = {} 
         self.watchlist = self._load_watchlist()
+        
+        self.session = Session()
+        self.session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        })
 
     def _load_watchlist(self):
-        """
-        純粹從 Excel 讀取名稱清單，不使用任何預設值或外部對應檔。
-        """
         try:
             if not os.path.exists(self.watchlist_path):
                 return []
@@ -37,7 +43,7 @@ class QuantScreenerEngine:
 
     def get_current_market_state(self):
         try:
-            tnx = yf.Ticker("^TNX")
+            tnx = yf.Ticker("^TNX", session=self.session)
             hist = tnx.history(period="1mo")
             if not hist.empty:
                 current_tnx = float(hist['Close'].iloc[-1])
@@ -64,53 +70,41 @@ class QuantScreenerEngine:
         }
 
     def get_ticker_symbol(self, stock_name):
-        """
-        純動態智慧識別與嚴格過濾 ETF：
-        - 不使用任何硬編碼 Mapping 或外部 JSON。
-        - 透過 Yahoo Finance 搜尋 API，強制要求 quoteType == 'EQUITY'（完全忽略 ETF、基金、債券）。
-        - 自動排除歐陸小型地方交易所（.SG, .MU 等），優先鎖定全球一線主板。
-        """
         name_clean = str(stock_name).strip()
         
-        # 若本身已經是標準大寫代碼且無特殊字元，直接返回
-        if len(name_clean) <= 6 and name_clean.isupper() and "." not in name_clean:
+        if name_clean in self._symbol_cache:
+            return self._symbol_cache[name_clean]
+
+        if len(name_clean) <= 10 and " " not in name_clean and ("." in name_clean or name_clean.isupper()):
+            self._symbol_cache[name_clean] = name_clean
             return name_clean
 
         search_query = name_clean.split('(')[0].strip()
         url = f"https://query2.finance.yahoo.com/v1/finance/search?q={urllib.parse.quote(search_query)}"
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         
+        best_symbol = search_query
         try:
-            res = requests.get(url, headers=headers, timeout=5)
+            time.sleep(0.2)
+            res = self.session.get(url, timeout=5)
             if res.status_code == 200:
                 data = res.json()
                 quotes = data.get('quotes', [])
                 for q in quotes:
                     sym = q.get('symbol', '')
-                    exch = q.get('exchange', '')
                     qtype = q.get('quoteType', '')
                     
-                    # ⚠️ 關鍵：強制要求必須是 EQUITY（股票），徹底忽略 ETF、MUTUALFUND、FUTURE 等
                     if qtype != 'EQUITY':
                         continue
-                        
-                    # 排除德國小型地方交易所與粉單 OTC
-                    if any(ext in sym for ext in ['.SG', '.MU', '.F', '.DU', '.HM']):
+                    if any(ext in sym for ext in ['.SG', '.MU', '.DU', '.HM']):
                         continue
                         
-                    # 優先選取美股主板或一線全球主板
-                    if exch in ['NMS', 'NYQ', 'NGM', 'ASE'] or '.' not in sym:
-                        return sym
-                    elif any(ext in sym for ext in ['.DE', '.PA', '.L', '.T', '.AS', '.MI', '.HK']):
-                        return sym
-                        
-                # 如果過濾後沒有 EQUITY，退回第一個搜尋結果
-                if quotes:
-                    return quotes[0]['symbol']
+                    best_symbol = sym
+                    break
         except Exception:
             pass
 
-        return name_clean
+        self._symbol_cache[name_clean] = best_symbol
+        return best_symbol
 
     def get_currency_symbol(self, currency_code):
         mapping = {
@@ -126,10 +120,21 @@ class QuantScreenerEngine:
         
         for stock in selected_stocks:
             symbol = self.get_ticker_symbol(stock)
+            df = pd.DataFrame()
+            
             try:
-                ticker = yf.Ticker(symbol)
-                df = ticker.history(period="6mo")
-                
+                if symbol in self._history_cache:
+                    df = self._history_cache[symbol]
+                else:
+                    time.sleep(0.25) # 穩定緩衝，防止觸發頻率限制
+                    ticker = yf.Ticker(symbol, session=self.session)
+                    df = ticker.history(period="6mo")
+                    if not df.empty and not df['Close'].isnull().all():
+                        self._history_cache[symbol] = df
+            except Exception:
+                pass
+            
+            try:
                 currency = "USD"
                 try:
                     fast_curr = ticker.fast_info.currency
@@ -140,17 +145,42 @@ class QuantScreenerEngine:
                 
                 curr_symbol = self.get_currency_symbol(currency)
 
+                # 🛡️ 防禦性檢查：若歷史行情為空，明確回報資料源受限，絕不讓價格變成 0.0 誤判
                 if df.empty or len(df) < 2 or 'Close' not in df.columns or df['Close'].isnull().all():
                     results.append({
                         "股票名稱": stock,
                         "股票代碼": symbol,
                         "最新現價": "N/A",
-                        "raw_price": 0.0,
+                        "raw_price": -1.0, # 使用負數標記無效價格，避免被當成 0.0 評分
                         "貨幣": currency,
                         "綜合評分": 0.0,
                         "評估結果": "不合格",
                         "投資建議": "暫時剔除 (Exclude)",
-                        "不合格原因": f"代碼 ({symbol}) 無法取得有效歷史行情數據 (非股票或代碼錯誤)",
+                        "不合格原因": f"代碼 ({symbol}) 暫時無法取得歷史數據 (可能受 Yahoo 頻率限制)",
+                        "量化預測 IC": 0.0,
+                        "Sharpe Ratio": 0.0,
+                        "Piotroski F": "5/9",
+                        "Altman Z": 2.5,
+                        "威科夫微觀結構": "N/A",
+                        "建議倉位比例": "0%",
+                        "建議配置金額 (€)": 0.0,
+                        "ATR 停損位": "N/A",
+                        "狀態": "不合格 (資料源受限)"
+                    })
+                    continue
+                
+                price = float(df['Close'].iloc[-1])
+                if pd.isna(price) or price <= 0:
+                    results.append({
+                        "股票名稱": stock,
+                        "股票代碼": symbol,
+                        "最新現價": "N/A",
+                        "raw_price": -1.0,
+                        "貨幣": currency,
+                        "綜合評分": 0.0,
+                        "評估結果": "不合格",
+                        "投資建議": "暫時迴避 (Avoid)",
+                        "不合格原因": "股價資料無效或為零",
                         "量化預測 IC": 0.0,
                         "Sharpe Ratio": 0.0,
                         "Piotroski F": "5/9",
@@ -162,10 +192,6 @@ class QuantScreenerEngine:
                         "狀態": "不合格 (數據異常)"
                     })
                     continue
-                
-                price = float(df['Close'].iloc[-1])
-                if pd.isna(price):
-                    price = 0.0
 
                 df['H-L'] = df['High'] - df['Low']
                 df['H-PC'] = abs(df['High'] - df['Close'].shift(1))
@@ -294,7 +320,7 @@ class QuantScreenerEngine:
                     "股票名稱": stock,
                     "股票代碼": symbol,
                     "最新現價": "N/A",
-                    "raw_price": 0.0,
+                    "raw_price": -1.0,
                     "貨幣": "USD",
                     "綜合評分": 0.0,
                     "評估結果": "不合格",
