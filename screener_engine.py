@@ -2,11 +2,12 @@
 """
 screener_engine.py
 ------------------
-現代多維度量化股票篩選與決策引擎 (內建 Yahoo Chart API 高效備援通道)
+現代多維度量化股票篩選與決策引擎 (內建模擬真人 Cookie 初始化、隨機延遲與 Chart API 備援通道)
 """
 
 import os
 import time
+import random
 import json
 import urllib.parse
 from datetime import datetime
@@ -25,9 +26,33 @@ class QuantScreenerEngine:
         self.watchlist = self._load_watchlist()
         
         self.session = Session()
+        self._init_human_session()
+
+    def _init_human_session(self):
+        """
+        模擬真人操作：
+        1. 設定完整的瀏覽器指紋 Headers，偽裝為真實 Chrome 瀏覽器。
+        2. 先訪問 Yahoo Finance 首頁以獲取合法的 Session Cookie，突破反爬蟲防護。
+        """
         self.session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9,zh-TW;q=0.8,zh;q=0.7",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0"
         })
+        
+        try:
+            self.session.get("https://finance.yahoo.com", timeout=5)
+            time.sleep(random.uniform(0.8, 1.5))  # 模擬真實瀏覽器載入後的短暫停留
+        except Exception:
+            pass
 
     def _load_symbol_cache(self):
         if os.path.exists(self.cache_path):
@@ -88,6 +113,7 @@ class QuantScreenerEngine:
     def get_ticker_symbol(self, stock_name):
         name_clean = str(stock_name).strip()
         
+        # 僅當快取中存在且為有效代碼時才直接返回
         if name_clean in self._symbol_cache and self._symbol_cache[name_clean]:
             return self._symbol_cache[name_clean]
 
@@ -102,12 +128,13 @@ class QuantScreenerEngine:
 
         for attempt in range(2):
             try:
-                time.sleep(0.2 * (attempt + 1))
+                # 模擬真人操作：每次搜尋加入隨機延遲
+                time.sleep(random.uniform(0.5, 1.2) * (attempt + 1))
                 res = self.session.get(url, timeout=5)
                 
                 if res.status_code == 429:
                     is_rate_limited = True
-                    time.sleep(1.0)
+                    time.sleep(2.0)  # 遇 429 進行冷卻等待
                     continue
                 
                 if res.status_code == 200:
@@ -144,6 +171,7 @@ class QuantScreenerEngine:
             else:
                 best_symbol = ""
 
+        # 🛡️ 關鍵防護：只有成功取得合法代碼且未受限時才寫入快取
         if best_symbol and not is_rate_limited:
             self._symbol_cache[name_clean] = best_symbol
             self._save_symbol_cache()
@@ -151,12 +179,17 @@ class QuantScreenerEngine:
         return best_symbol
 
     def _fetch_chart_data(self, symbol, range_str="6mo"):
-        """
-        🚀 方法一核心：直接請求 Yahoo Chart API 端點，繞過 yfinance 限制並提升抓取穩定度
-        """
+        """透過 Yahoo Chart API 專用通道抓取歷史行情，繞過 yfinance 限制"""
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(symbol)}?range={range_str}&interval=1d"
         try:
+            # 模擬真人操作：每次圖表請求加入隨機緩衝時間
+            time.sleep(random.uniform(0.4, 1.0))
+            
             res = self.session.get(url, timeout=6)
+            if res.status_code == 429:
+                time.sleep(2.5)
+                res = self.session.get(url, timeout=6)
+                
             if res.status_code == 200:
                 data = res.json()
                 result = data.get('chart', {}).get('result', [])
@@ -205,11 +238,9 @@ class QuantScreenerEngine:
             if symbol in self._history_cache:
                 df = self._history_cache[symbol]
             else:
-                time.sleep(0.1)
                 # 優先使用 Chart API 抓取歷史行情
                 df = self._fetch_chart_data(symbol, range_str="6mo")
                 if df.empty:
-                    # 若 Chart API 失敗，降級使用 yfinance 作為第二備援
                     ticker = yf.Ticker(symbol, session=self.session)
                     df = ticker.history(period="6mo")
                 
@@ -221,13 +252,11 @@ class QuantScreenerEngine:
         try:
             currency = "USD"
             try:
-                # 嘗試透過 fast_info 獲取幣別
                 ticker = yf.Ticker(symbol, session=self.session)
                 fast_curr = ticker.fast_info.currency
                 if fast_curr and not pd.isna(fast_curr):
                     currency = fast_curr
             except Exception:
-                # 若為歐洲交易所代碼自動判定歐元
                 if ".DE" in symbol or ".PA" in symbol or ".MI" in symbol:
                     currency = "EUR"
             
@@ -301,6 +330,7 @@ class QuantScreenerEngine:
             if price < 0.5:
                 reasons.append(f"股價過低 ($ {price:.2f} < $0.5)")
 
+            # 自然評分：該多少就多少分
             raw_score = (ic_score * 150.0 + max(-1.0, sharpe) * 10.0 + (f_score / 9.0) * 30.0 + min(z_score, 6.0) * 4.0)
             comp_score = round(max(0.0, min(100.0, raw_score + 25.0)), 1)
             if pd.isna(comp_score):
@@ -354,7 +384,7 @@ class QuantScreenerEngine:
         macro_multiplier *= (1.0 + m2_gap * 0.03)
         
         results = []
-        max_workers = min(8, max(2, len(selected_stocks)))
+        max_workers = min(6, max(2, len(selected_stocks)))  # 控制併發執行緒數，保護連線穩定
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_stock = {
                 executor.submit(self._process_single_stock, stock, macro_multiplier): stock 
