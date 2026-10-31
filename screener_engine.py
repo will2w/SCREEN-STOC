@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-現代多維度量化股票篩選與決策引擎 (純 API 智慧搜尋 + 嚴格 EQUITY 過濾版)
+現代多維度量化股票篩選與決策引擎 (精準 EQUITY 過濾 + 輕量成交量驗證優化版)
 """
 
 import os
@@ -18,8 +18,8 @@ from datetime import datetime
 class QuantScreenerEngine:
     def __init__(self, watchlist_path="Watchlist_Stocks.xlsx"):
         self.watchlist_path = watchlist_path
-        self._symbol_cache = {}  # 記憶體快取
-        self._history_cache = {} # 歷史行情快取
+        self._symbol_cache = {}  # 記憶體快取：紀錄已經成功解析的代碼
+        self._history_cache = {} # 記憶體快取：紀錄歷史行情
         self.watchlist = self._load_watchlist()
 
     def _load_watchlist(self):
@@ -65,10 +65,10 @@ class QuantScreenerEngine:
 
     def get_ticker_symbol(self, stock_name):
         """
-        純 API 智慧代碼解析：
-        1. 若名稱本身就是標準大寫代碼且無特殊字元，直接返回。
-        2. 透過 Yahoo 搜尋 API 查詢，嚴格過濾 quoteType == 'EQUITY'（排除 ETF、債券、基金）。
-        3. 直接取搜尋結果中流動性最好、評分最高的主板代碼，絕不盲目拼接後綴。
+        智慧代碼動態對應與成交量最優選擇法：
+        1. 排除非股票資產（嚴格過濾 quoteType == 'EQUITY'）。
+        2. 透過 Yahoo 搜尋 API 找出潛在的主板代碼候選。
+        3. 進行輕量成交量驗證，挑選流動性最高的主板掛牌。
         """
         name_clean = str(stock_name).strip()
         
@@ -76,7 +76,7 @@ class QuantScreenerEngine:
         if name_clean in self._symbol_cache:
             return self._symbol_cache[name_clean]
 
-        # 若本身已是簡潔代碼（如 NVDA, BKR, BAS.DE），直接採用
+        # 若本身已經是乾淨的標準代碼，直接採用
         if len(name_clean) <= 10 and " " not in name_clean and ("." in name_clean or name_clean.isupper()):
             self._symbol_cache[name_clean] = name_clean
             return name_clean
@@ -85,9 +85,9 @@ class QuantScreenerEngine:
         url = f"https://query2.finance.yahoo.com/v1/finance/search?q={urllib.parse.quote(search_query)}"
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         
-        best_symbol = search_query
+        candidates = []
         try:
-            time.sleep(0.3)  # 避免觸發 429 Rate Limited
+            time.sleep(0.2)  # 禮貌性延遲，避免 429 Rate Limited
             res = requests.get(url, headers=headers, timeout=5)
             if res.status_code == 200:
                 data = res.json()
@@ -103,12 +103,30 @@ class QuantScreenerEngine:
                     # 排除地方小交易所或粉單
                     if any(ext in sym for ext in ['.SG', '.MU', '.DU', '.HM']):
                         continue
-                    
-                    # 找到第一個符合條件的主板股票代碼立即採用
-                    best_symbol = sym
-                    break
+                        
+                    candidates.append(sym)
         except Exception:
             pass
+
+        if not candidates:
+            candidates = [search_query]
+
+        # 輕量成交量驗證：從前 3 個候選中挑選出實際成交量最大、最活躍的主板代碼
+        best_symbol = candidates[0]
+        max_volume = -1.0
+
+        for sym in candidates[:3]:
+            try:
+                time.sleep(0.15)
+                test_ticker = yf.Ticker(sym)
+                hist = test_ticker.history(period="3d")
+                if not hist.empty and 'Volume' in hist.columns:
+                    avg_vol = float(hist['Volume'].mean())
+                    if not pd.isna(avg_vol) and avg_vol > max_volume:
+                        max_volume = avg_vol
+                        best_symbol = sym
+            except Exception:
+                continue
 
         self._symbol_cache[name_clean] = best_symbol
         return best_symbol
@@ -131,7 +149,7 @@ class QuantScreenerEngine:
                 if symbol in self._history_cache:
                     df = self._history_cache[symbol]
                 else:
-                    time.sleep(0.3)
+                    time.sleep(0.2)
                     ticker = yf.Ticker(symbol)
                     df = ticker.history(period="6mo")
                     self._history_cache[symbol] = df
@@ -156,7 +174,7 @@ class QuantScreenerEngine:
                         "綜合評分": 0.0,
                         "評估結果": "不合格",
                         "投資建議": "暫時剔除 (Exclude)",
-                        "不合格原因": f"代碼 ({symbol}) 無法取得有效歷史行情數據 (可能已下市或代碼錯誤)",
+                        "不合格原因": f"代碼 ({symbol}) 無法取得有效歷史行情數據 (可能已下市或受 429 限制)",
                         "量化預測 IC": 0.0,
                         "Sharpe Ratio": 0.0,
                         "Piotroski F": "5/9",
