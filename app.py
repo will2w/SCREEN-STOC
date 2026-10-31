@@ -1,6 +1,14 @@
+# -*- coding: utf-8 -*-
+"""
+app.py
+------
+現代多維度量化股票篩選與決策系統 (完整版：內建流暢進度回饋與全景評估介面)
+"""
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import time
 from screener_engine import QuantScreenerEngine
 
 st.set_page_config(
@@ -75,22 +83,47 @@ if run_btn:
     if not selected_stocks:
         st.warning("請至少選取或載入一檔股票。")
     else:
-        with st.spinner(f"正在連線 2026 實時市場數據並計算 Excel 全景量化評分與 Portfolio Top 15..."):
-            df_res, df_unqualified = engine.run_screening_with_unqualified(
-                selected_stocks, 
-                capital=total_capital, 
-                credit_impulse_status=credit_impulse, 
-                m2_gap=m2_gap, 
-                method=kelly_mode
-            )
-            
+        # 🚀 整合流暢的視覺化進度條與狀態提示
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        status_text.text("🔄 步驟 1/3: 初始化模擬真人 Session 與宏觀市場狀態...")
+        progress_bar.progress(20)
+        time.sleep(0.3)
+        
+        status_text.text("📊 步驟 2/3: 透過 Chart API 高效通道抓取歷史行情與多維度量化計算...")
+        progress_bar.progress(55)
+        
+        # 執行量化引擎計算
+        df_res, df_unqualified = engine.run_screening_with_unqualified(
+            selected_stocks, 
+            capital=total_capital, 
+            credit_impulse_status=credit_impulse, 
+            m2_gap=m2_gap, 
+            method=kelly_mode
+        )
+        
+        status_text.text("✨ 步驟 3/3: 計算 Sharpe、IC 分數與 100% 歸一化動態頭寸配置...")
+        progress_bar.progress(90)
+        time.sleep(0.3)
+        
         if df_res.empty and df_unqualified.empty:
+            progress_bar.empty()
+            status_text.empty()
             st.error("篩選結果為空，請檢查網絡連線或標的流動性狀態。")
         else:
             st.session_state['df_res'] = df_res
             st.session_state['df_unqualified'] = df_unqualified
             st.session_state['credit_impulse'] = credit_impulse
             st.session_state['m2_gap'] = m2_gap
+            
+            progress_bar.progress(100)
+            status_text.text("✅ 全景量化篩選與 Portfolio Top 15 投組建構完成！")
+            time.sleep(0.5)
+            
+            progress_bar.empty()
+            status_text.empty()
+            st.rerun()
 
 # 主畫面展示 (若已執行評估)
 if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
@@ -134,20 +167,22 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
         
         col_t1, col_t2 = st.columns([3, 1])
         with col_t2:
-            total_top15_amt = top15_df['建議配置金額 (€)'].sum()
+            # 🛡️ 防禦性檢查：確認欄位存在再計算總金額，防止 KeyError
+            total_top15_amt = top15_df['建議配置金額 (€)'].sum() if '建議配置金額 (€)' in top15_df.columns else 0.0
             st.metric("Top 15 總配置金額", f"€ {total_top15_amt:,.2f}", f"佔總資本 {round(total_top15_amt/total_capital*100, 1)}%")
             
         st.dataframe(top15_display, use_container_width=True, height=550)
         
-        fig_top15 = px.bar(
-            top15_df, 
-            x='股票名稱', 
-            y='建議配置金額 (€)', 
-            color='綜合評分',
-            title='Portfolio Top 15 核心標的之最佳資本配置與綜合評分分佈',
-            labels={'建議配置金額 (€)': '配置金額 (€)', '綜合評分': '綜合評分 (分)'}
-        )
-        st.plotly_chart(fig_top15, use_container_width=True)
+        if not top15_df.empty and '建議配置金額 (€)' in top15_df.columns:
+            fig_top15 = px.bar(
+                top15_df, 
+                x='股票名稱', 
+                y='建議配置金額 (€)', 
+                color='綜合評分',
+                title='Portfolio Top 15 核心標的之最佳資本配置與綜合評分分佈',
+                labels={'建議配置金額 (€)': '配置金額 (€)', '綜合評分': '綜合評分 (分)'}
+            )
+            st.plotly_chart(fig_top15, use_container_width=True)
         
     with tab4:
         st.markdown("### 💰 投資建議與動態資金配置總覽")
