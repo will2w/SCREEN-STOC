@@ -2,7 +2,7 @@
 """
 app.py
 ------
-QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策系統 (高科技賽博龐克戰情室版)
+QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策系統 (極致賽博龐克戰情室版)
 """
 
 import streamlit as st
@@ -277,7 +277,7 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
     ])
     
     with tab1:
-        st.markdown("### 📊 通通過多維度量化檢驗之合格股票池")
+        st.markdown("### 📊 通過多維度量化檢驗之合格股票池")
         excel_view_df = df_res.drop(columns=['raw_price', '貨幣', '建議倉位比例', '建議配置金額 (€)', '不合格原因'], errors='ignore')
         st.dataframe(excel_view_df, use_container_width=True, height=600)
         
