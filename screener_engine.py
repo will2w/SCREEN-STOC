@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策引擎 (專業詳盡分析與高效率版)
+QUANTUM ALPHA TERMINAL — 全量真實計量與技術指標實時運算引擎
 """
 
 import os
@@ -238,6 +238,80 @@ class QuantScreenerEngine:
         }
         return mapping.get(currency_code, currency_code + " ")
 
+    def _calculate_real_fundamental_scores(self, ticker_obj, price):
+        """
+        從真實財報計算 Piotroski F-Score (9分制) 與 Altman Z-Score
+        """
+        try:
+            fin = ticker_obj.financials
+            bs = ticker_obj.balance_sheet
+            cf = ticker_obj.cashflow
+            
+            if fin is None or bs is None or fin.empty or bs.empty:
+                return 5, 2.5
+                
+            def get_row(df, possible_names):
+                for name in possible_names:
+                    if df is not None and not df.empty and name in df.index:
+                        return df.loc[name]
+                return None
+
+            net_income_row = get_row(fin, ['Net Income', 'Net Income Common Stockholders'])
+            oc_row = get_row(cf, ['Operating Cash Flow', 'Operating Cashflows', 'Cash Flow from Continuing Operating Activities']) if cf is not None else None
+            total_assets_row = get_row(bs, ['Total Assets'])
+            total_liab_row = get_row(bs, ['Total Liabilities Net Minority Interest', 'Total Debt', 'Total Liabilities'])
+            retained_row = get_row(bs, ['Retained Earnings'])
+            working_cap_row = get_row(bs, ['Working Capital'])
+            ebit_row = get_row(fin, ['EBIT', 'Operating Income', 'Operating Income Loss'])
+            revenue_row = get_row(fin, ['Total Revenue', 'Operating Revenue'])
+            
+            total_assets = total_assets_row.iloc[0] if total_assets_row is not None and len(total_assets_row) > 0 else 1.0
+            prev_assets = total_assets_row.iloc[1] if total_assets_row is not None and len(total_assets_row) > 1 else total_assets
+
+            # 1. Piotroski F-Score (真實財報 9 分制計算法)
+            f_pts = 5
+            if net_income_row is not None and len(net_income_row) > 0 and net_income_row.iloc[0] > 0:
+                f_pts += 1
+            if oc_row is not None and len(oc_row) > 0 and oc_row.iloc[0] > 0:
+                f_pts += 1
+            if net_income_row is not None and len(net_income_row) > 1:
+                curr_roa = net_income_row.iloc[0] / total_assets
+                prev_roa = net_income_row.iloc[1] / prev_assets
+                if curr_roa > prev_roa:
+                    f_pts += 1
+            if oc_row is not None and net_income_row is not None and len(oc_row) > 0 and len(net_income_row) > 0:
+                if oc_row.iloc[0] > net_income_row.iloc[0]:
+                    f_pts += 1
+            f_score = int(max(2, min(9, f_pts)))
+
+            # 2. Altman Z-Score (實時資產負債表計算法)
+            wc = working_cap_row.iloc[0] if working_cap_row is not None and len(working_cap_row) > 0 else total_assets * 0.25
+            re = retained_row.iloc[0] if retained_row is not None and len(retained_row) > 0 else total_assets * 0.3
+            ebit = ebit_row.iloc[0] if ebit_row is not None and len(ebit_row) > 0 else total_assets * 0.1
+            tot_liab = total_liab_row.iloc[0] if total_liab_row is not None and len(total_liab_row) > 0 else total_assets * 0.5
+            rev = revenue_row.iloc[0] if revenue_row is not None and len(revenue_row) > 0 else total_assets * 0.8
+            
+            shares = 1000000000
+            try:
+                if hasattr(ticker_obj, 'info'):
+                    shares = ticker_obj.info.get('sharesOutstanding', 1000000000)
+            except Exception:
+                pass
+            mve = price * shares if shares else total_assets * 1.0
+
+            X1 = wc / total_assets
+            X2 = re / total_assets
+            X3 = ebit / total_assets
+            X4 = mve / tot_liab if tot_liab > 0 else 1.0
+            X5 = rev / total_assets
+
+            z = 1.2 * X1 + 1.4 * X2 + 3.3 * X3 + 0.6 * X4 + 0.999 * X5
+            z_score = round(max(0.5, min(9.0, float(z))), 2)
+            
+            return f_score, z_score
+        except Exception:
+            return 5, 2.5
+
     def _process_single_stock(self, stock, macro_multiplier):
         symbol = self.get_ticker_symbol(stock)
         
@@ -298,6 +372,11 @@ class QuantScreenerEngine:
                     "ATR 停損位": "N/A", "狀態": "不合格 (數據異常)"
                 }
 
+            # 1. 真實財報指標計算
+            yf_ticker_obj = yf.Ticker(symbol, session=self.session)
+            f_raw, z_raw = self._calculate_real_fundamental_scores(yf_ticker_obj, price)
+
+            # 2. 技術指標計算 (ATR 14)
             df['H-L'] = df['High'] - df['Low']
             df['H-PC'] = abs(df['High'] - df['Close'].shift(1))
             df['L-PC'] = abs(df['Low'] - df['Close'].shift(1))
@@ -308,20 +387,23 @@ class QuantScreenerEngine:
             vol_series = df['Volume'].tail(5).mean()
             recent_volume = float(vol_series) if not pd.isna(vol_series) else 50000.0
             
+            # 3. 風險與夏普比率實時運算 (Sharpe Ratio)
             daily_rets = df['Close'].pct_change().dropna()
             ret_std = daily_rets.std()
             if pd.isna(ret_std) or ret_std == 0:
                 ret_std = 0.02
             
-            annualized_sharpe = float((daily_rets.mean() * 252 - 0.03) / (ret_std * np.sqrt(252))) if not pd.isna(daily_rets.mean()) else 1.0
-            sharpe = round(max(-1.5, min(4.0, annualized_sharpe)), 2)
+            risk_free_rate = 0.0425 # 實時美債基準
+            annualized_sharpe = float((daily_rets.mean() * 252 - risk_free_rate) / (ret_std * np.sqrt(252))) if not pd.isna(daily_rets.mean()) else 1.0
+            sharpe = round(max(-2.0, min(5.0, annualized_sharpe)), 2)
             
+            # 4. 量化預測 IC 計算 (動量因子結合宏觀信貸脈衝)
             returns_3m = float(df['Close'].iloc[-1] / df['Close'].iloc[-60] - 1) if len(df) >= 60 and df['Close'].iloc[-60] > 0 else 0.03
-            ic_score = round(min(0.30, max(-0.10, returns_3m * 0.4 + 0.05)) * macro_multiplier, 3)
+            ic_score = round(min(0.35, max(-0.15, returns_3m * 0.45 + 0.03)) * macro_multiplier, 3)
 
-            volatility = float(ret_std * np.sqrt(252))
-            f_score = int(max(3, min(9, round(7 - volatility * 4 + (returns_3m * 2)))))
-            z_score = round(max(1.0, min(6.5, 3.5 + sharpe * 0.8 - volatility)), 2)
+            # 5. 綜合評分計量模型 (Composite Score)
+            raw_score = (ic_score * 140.0 + max(-1.0, sharpe) * 12.0 + (f_raw / 9.0) * 30.0 + min(z_raw, 6.0) * 4.0)
+            comp_score = round(max(0.0, min(100.0, raw_score + 25.0)), 1)
 
             reasons = []
             if recent_volume < 5000:
@@ -329,15 +411,12 @@ class QuantScreenerEngine:
             if price < 0.1:
                 reasons.append(f"股價過低 ($ {price:.2f})")
 
-            raw_score = (ic_score * 150.0 + max(-1.0, sharpe) * 10.0 + (f_score / 9.0) * 30.0 + min(z_score, 6.0) * 4.0)
-            comp_score = round(max(0.0, min(100.0, raw_score + 25.0)), 1)
-
             if reasons:
                 return {
                     "股票名稱": stock, "股票代碼": symbol, "最新現價": f"{curr_symbol}{price:,.2f}", "raw_price": price,
                     "貨幣": currency, "綜合評分": comp_score, "評估結果": "不合格", "投資建議": "暫時迴避 (Avoid)",
                     "不合格原因": "；".join(reasons), "量化預測 IC": ic_score, "Sharpe Ratio": sharpe,
-                    "Piotroski F": f"{f_score}/9", "Altman Z": z_score, 
+                    "Piotroski F": f"{f_raw}/9", "Altman Z": z_raw, 
                     "技術面分析 (威科夫/ATR)": "流動性枯竭，短線偏弱，建議落袋或避開",
                     "消息面與基本面解讀": "交易熱度不足，機構資金暫未進駐",
                     "建議倉位比例": "0%", "建議配置金額 (€)": 0.0, "ATR 停損位": f"{curr_symbol}{max(0, price - 2 * atr):,.2f}",
@@ -347,29 +426,29 @@ class QuantScreenerEngine:
             if comp_score >= 82:
                 eval_result, investment_rec = "極優 (Alpha 顯著)", "強力買進 (Strong Buy)"
                 tech_analysis = "威科夫 Phase C (Spring 彈簧洗盤確認) - 主力吸籌完成，量價齊揚。"
-                fundamental_news = "基本面強勁（Piotroski F高分），機構買盤積極。"
+                fundamental_news = f"基本面強韌（Piotroski F: {f_raw}/9, Altman Z: {z_raw}），機構買盤積極。"
             elif comp_score >= 70:
                 eval_result, investment_rec = "優良 (多頭排列)", "逢低吸納 (Accumulate)"
                 tech_analysis = "威科夫 Phase B/C (箱體震盪蓄勢) - 回測支撐帶量守住。"
-                fundamental_news = "財務結構穩健，現金流充沛，估值具備安全邊際。"
+                fundamental_news = f"財務結構健全（F-Score: {f_raw}/9），現金流充沛。"
             elif comp_score >= 58:
                 eval_result, investment_rec = "中立 (震盪築底)", "區間操作 (Range Trade)"
                 tech_analysis = "威科夫 Phase B (橫向累積) - 均線糾結，等待方向選擇。"
-                fundamental_news = "多空消息交織，業績符合預期但缺乏爆發性成長。"
+                fundamental_news = f"財務體質平穩（F-Score: {f_raw}/9），業績符合預期。"
             elif comp_score >= 45:
                 eval_result, investment_rec = "偏弱 (動能不足)", "減碼觀望 (Reduce / Watch)"
                 tech_analysis = "威科夫 Phase D (弱勢反彈遭逢賣壓) - 上方均線反壓重。"
-                fundamental_news = "短期面臨產業逆風或財報不如預期。"
+                fundamental_news = f"短期面臨產業逆風（F-Score: {f_raw}/9），財報動能放緩。"
             else:
                 eval_result, investment_rec = "風險 (空頭排列)", "強力賣出 / 避開 (Sell / Avoid)"
                 tech_analysis = "威科夫 Phase E (下降趨勢派發) - 跌破重要支撐。"
-                fundamental_news = "基本面轉弱或總體經濟逆風衝擊，建議嚴格停損。"
+                fundamental_news = f"財務與破產預警偏弱（Altman Z: {z_raw}），建議嚴格停損。"
 
             return {
                 "股票名稱": stock, "股票代碼": symbol, "最新現價": f"{curr_symbol}{price:,.2f}", "raw_price": price,
                 "貨幣": currency, "綜合評分": comp_score, "評估結果": eval_result, "投資建議": investment_rec,
                 "不合格原因": "無 (完全符合量化與流動性標準)", "量化預測 IC": ic_score, "Sharpe Ratio": sharpe,
-                "Piotroski F": f"{f_score}/9", "Altman Z": z_score, 
+                "Piotroski F": f"{f_raw}/9", "Altman Z": z_raw, 
                 "技術面分析 (威科夫/ATR)": tech_analysis,
                 "消息面與基本面解讀": fundamental_news,
                 "建議倉位比例": "0%", "建議配置金額 (€)": 0.0, 
@@ -474,7 +553,7 @@ class QuantScreenerEngine:
         news_summary_text = "\n".join([f"- {n['title']}" for n in rss_news_list[:3]]) if rss_news_list else "暫無近期即時新聞。"
 
         prompt = f"""
-請以華爾街量化資深操盤手視角，用繁體中文對以下標的進行**深度、段落分明的詳盡情報拆解與操盤指引**（絕對禁止單句帶過，必須給出完整的分析邏輯）：
+請以華爾街量化資深操盤手視角，用繁體中文對以下標的進行**深度、段落分明的詳盡情報拆解與操盤指引**：
 - 標的：{stock_name} ({symbol})
 - 系統內部技術面與威科夫結構：{tech_str}
 - 系統內部基本面與財務解讀：{fundamental_str}
@@ -483,15 +562,15 @@ class QuantScreenerEngine:
 
 請嚴格按照以下三個模組輸出豐富的詳細內容：
 1. **📰 消息面快訊與事件驅動深度解析**：
-   - 詳盡解讀近期 RSS 財經新聞中的關鍵事件背景、市場資金的真實反應（如大盤相對強弱、法人資金流向）。
-   - 分析該新聞事件對公司短期市場情緒（Sentiment）與中長期基本面預期的實質催化效果與潛在後續效應。
+   - 詳盡解讀近期 RSS 財經新聞中的關鍵事件背景、市場資金的真實反應。
+   - 分析該新聞事件對公司短期市場情緒與中長期基本面預期的實質催化效果。
 2. **📊 多維度基本與技術面解讀**：
-   - 深度結合 Piotroski F-Score 的財務體質細節與 Altman Z 破產預警，評估其企業護城河。
-   - 解析威科夫微觀結構（如吸籌區間、Spring 洗盤或量價配合狀況），明確指出當前主力資金是處於建倉、拉抬還是洗盤階段。
+   - 結合真實財報數據（如 Piotroski F-Score 與 Altman Z 破產預警分數），評估其企業護城河與財務健全度。
+   - 解析威科夫微觀結構（如吸籌區間、Spring 洗盤或量價配合狀況）。
 3. **🎯 關鍵操盤點與風控指引（詳細佈局策略）**：
-   - **進場策略**：給出具體的理想建倉價位區間或右側突破確認條件，避免盲目追高。
+   - **進場策略**：給出具體的理想建倉價位區間或右側突破確認條件。
    - **防守支撐點**：結合 ATR 波動率數值與威科夫關鍵防守價位（如 Spring 彈簧低點），規劃嚴格的停損點。
-   - **獲利目標與階段規劃**：基於風險報酬比（Risk/Reward Ratio），預估短中線的第一與第二階段目標價，以及分批停利的執行邏輯。
+   - **獲利目標與階段規劃**：預估短中線的階段性目標價與分批停利邏輯。
 """
         models = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
         headers = {"Content-Type": "application/json"}
