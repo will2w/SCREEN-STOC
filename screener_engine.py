@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-現代多維度量化股票篩選與決策引擎 (動態外部檔案對應 + 智慧後綴重試版)
+現代多維度量化股票篩選與決策引擎 (分級解析 + 最後備用模糊搜尋版)
 """
 
 import os
@@ -51,7 +51,7 @@ class QuantScreenerEngine:
 
     def _load_watchlist(self):
         """
-        從外部 CSV 或 Excel 動態載入清單，並自動建立「名稱 -> 代碼」動態對應表（完全不寫死字典）
+        智慧載入清單：自動相容「雙欄對應檔 (Stock Name & Symbol)」或「單欄名稱檔」
         """
         try:
             if os.path.exists("Watchlist_Stocks.csv"):
@@ -59,25 +59,34 @@ class QuantScreenerEngine:
             elif os.path.exists(self.watchlist_path):
                 df = pd.read_excel(self.watchlist_path, sheet_name="Watchlist Stocks")
             else:
-                return ["NVIDIA", "Apple", "BASF", "華虹半導體"]
+                return ["NVIDIA", "E.on", "BASF", "JinkoSolar (ADR)"]
             
-            # 從外部檔案動態建立對應字典
             self.dynamic_symbol_map = {}
-            if "Stock Name" in df.columns and "Symbol" in df.columns:
-                for _, row in df.iterrows():
-                    name = str(row["Stock Name"]).strip()
-                    sym = str(row["Symbol"]).strip()
-                    self.dynamic_symbol_map[name] = sym
-                    self.dynamic_symbol_map[sym] = sym
-                return df["Stock Name"].dropna().astype(str).str.strip().tolist()
+            name_col, sym_col = None, None
             
-            for col in ["Symbol", "Ticker", "代碼", "Stock Name"]:
+            for col in df.columns:
+                col_lower = str(col).lower()
+                if "name" in col_lower or "名稱" in col or "股票名稱" in col:
+                    name_col = col
+                if "symbol" in col_lower or "ticker" in col_lower or "代碼" in col:
+                    sym_col = col
+
+            if name_col and sym_col:
+                for _, row in df.iterrows():
+                    s_name = str(row[name_col]).strip()
+                    s_sym = str(row[sym_col]).strip()
+                    if s_name and s_sym and s_sym.lower() != "nan":
+                        self.dynamic_symbol_map[s_name] = s_sym
+                        self.dynamic_symbol_map[s_sym] = s_sym
+                return df[name_col].dropna().astype(str).str.strip().tolist()
+            
+            for col in ["Symbol", "Ticker", "代碼", "Stock Name", "股票名稱"]:
                 if col in df.columns:
                     return df[col].dropna().astype(str).str.strip().tolist()
             return df.iloc[:, 0].dropna().astype(str).str.strip().tolist()
         except Exception:
             self.dynamic_symbol_map = {}
-            return ["NVIDIA", "Apple", "BASF", "華虹半導體"]
+            return ["NVIDIA", "E.on", "BASF", "JinkoSolar (ADR)"]
 
     def get_current_market_state(self):
         try:
@@ -106,43 +115,62 @@ class QuantScreenerEngine:
 
     def get_ticker_symbol(self, stock_name):
         """
-        強固型代碼解析與智慧後綴重試：
-        1. 優先從外部動態檔案對應表取得。
-        2. 若無，透過 Yahoo Search API 尋找，並自動過濾非 EQUITY 資產。
-        3. 若找不到或缺乏後綴，自動根據關鍵字智慧補上國家後綴（.DE, .HK, .PA, .T 等）重試。
+        嚴格分級代碼解析管線：
+        1. 快取快篩
+        2. 外部檔案對應（若清單有雙欄設定）
+        3. 標準代碼格式直判（如大寫無空白、帶有點或後綴）
+        4. 【最後才用的方案】動態模糊搜尋 API
         """
         name_clean = str(stock_name).strip()
         
+        # 級別一：檢查快取
         if name_clean in self._symbol_cache and self._symbol_cache[name_clean]:
             return self._symbol_cache[name_clean]
 
-        # 1. 優先檢查從外部檔案動態載入的對應表
+        # 級別二：檢查外部檔案對應表
         if self.dynamic_symbol_map and name_clean in self.dynamic_symbol_map:
             resolved = self.dynamic_symbol_map[name_clean]
             self._symbol_cache[name_clean] = resolved
             self._save_symbol_cache()
             return resolved
 
-        # 2. 自動清洗括號與說明文字（例如 "BASF (德國 化工)" -> 檢查 "BASF" 是否在動態對應表中）
-        if "(" in name_clean and ")" in name_clean:
-            base_name = name_clean.split("(")[0].strip()
-            if self.dynamic_symbol_map and base_name in self.dynamic_symbol_map:
-                resolved = self.dynamic_symbol_map[base_name]
+        # 清洗括號（例如 "JinkoSolar (ADR)" -> "JinkoSolar"）
+        base_query = name_clean
+        if "(" in base_query and ")" in base_query:
+            base_query = base_query.split("(")[0].strip()
+            if self.dynamic_symbol_map and base_query in self.dynamic_symbol_map:
+                resolved = self.dynamic_symbol_map[base_query]
                 self._symbol_cache[name_clean] = resolved
                 self._save_symbol_cache()
                 return resolved
 
-        # 若本身已是標準代碼（如 NVDA, BAS.DE, 1347.HK），直接採用
-        if len(name_clean) <= 10 and " " not in name_clean and ("." in name_clean or name_clean.isupper()):
-            self._symbol_cache[name_clean] = name_clean
+        # 級別三：若本身已是標準代碼格式（如 NVDA, BAS.DE, 1347.HK），直接採用
+        if len(base_query) <= 12 and " " not in base_query and ("." in base_query or base_query.isupper()):
+            self._symbol_cache[name_clean] = base_query
             self._save_symbol_cache()
-            return name_clean
+            return base_query
 
-        search_query = name_clean.split('(')[0].strip()
+        # 級別四：【最後才用的方案】當以上常規方法全部無法辨識時，啟動動態模糊搜尋 API
+        best_symbol = self._execute_fuzzy_search_fallback(base_query)
+        
+        final_symbol = best_symbol if best_symbol else base_query
+        self._symbol_cache[name_clean] = final_symbol
+        self._save_symbol_cache()
+        return final_symbol
 
-        # 輔助函式：透過 Yahoo Search API 尋找合法股票代碼
-        def query_yahoo_search(query):
-            url = f"https://query2.finance.yahoo.com/v1/finance/search?q={urllib.parse.quote(query)}"
+    def _execute_fuzzy_search_fallback(self, query_str):
+        """
+        最後備用方案：當常規方法失效時，透過 Yahoo 搜尋 API 進行動態模糊匹配
+        """
+        queries_to_try = [
+            query_str,                                            # 原名稱 (e.g., "E.on", "Kuraray")
+            query_str.replace(".", "").replace("-", " "),         # 去除特殊符號 (e.g., "Eon")
+            query_str.split()[0] if " " in query_str else ""      # 取第一個單字
+        ]
+        queries_to_try = [q for q in queries_to_try if q]
+
+        for q_var in queries_to_try:
+            url = f"https://query2.finance.yahoo.com/v1/finance/search?q={urllib.parse.quote(q_var)}"
             for attempt in range(2):
                 try:
                     time.sleep(0.2 * (attempt + 1))
@@ -152,59 +180,12 @@ class QuantScreenerEngine:
                         for q in data.get('quotes', []):
                             sym = q.get('symbol', '')
                             qtype = q.get('quoteType', '')
-                            if qtype != 'EQUITY':
-                                continue
-                            if any(ext in sym for ext in ['.SG', '.MU', '.DU', '.HM']):
-                                continue
-                            return sym
+                            if qtype == 'EQUITY' and sym:
+                                if not any(ext in sym for ext in ['.SG', '.MU', '.DU', '.HM']):
+                                    return sym
                 except Exception:
                     continue
-            return None
-
-        # 3. 嘗試直接搜尋
-        best_symbol = query_yahoo_search(search_query)
-
-        # 4. 💡 智慧後綴重試機制：若找不到或沒有交易所後綴，根據名稱關鍵字自動補上國家後綴重試
-        if not best_symbol or "." not in best_symbol:
-            suffixes_to_try = []
-            if any(k in name_clean for k in ["德國", "德股", "BASF", "SAP", "SIEMENS", "E.ON", "BMW", "DB", "CECONOMY", "EXASOL"]):
-                suffixes_to_try = [".DE", ".F"]
-            elif any(k in name_clean for k in ["香港", "港股", "騰訊", "阿里巴巴", "美團", "華虹", "中國移動", "比亞迪"]):
-                suffixes_to_try = [".HK"]
-            elif any(k in name_clean for k in ["法國", "法股", "LVMH", "Airbus", "TotalEnergies", "Schneider"]):
-                suffixes_to_try = [".PA"]
-            elif any(k in name_clean for k in ["日本", "日股", "豐田", "索尼", "任天堂", "基恩斯"]):
-                suffixes_to_try = [".T"]
-            elif any(k in name_clean for k in ["台灣", "台股", "鴻海", "聯發科", "台積電"]):
-                suffixes_to_try = [".TW", ""]
-            else:
-                suffixes_to_try = [".DE", ".HK", ".PA", ".T"]
-
-            for sfx in suffixes_to_try:
-                trial_query = search_query + sfx
-                sym_trial = query_yahoo_search(trial_query)
-                if sym_trial:
-                    best_symbol = sym_trial
-                    break
-                
-                # 直接用 yfinance 測試直連代碼
-                if not any('\u4e00' <= c <= '\u9fa5' for c in search_query):
-                    direct_trial = search_query.strip().upper() + sfx
-                    try:
-                        test_df = yf.Ticker(direct_trial, session=self.session).history(period="3d")
-                        if not test_df.empty and not test_df['Close'].isnull().all():
-                            best_symbol = direct_trial
-                            break
-                    except Exception:
-                        pass
-
-        # 5. 防禦性檢查：若仍無有效代碼，回傳空字串
-        if not best_symbol or len(best_symbol) > 12 or " " in best_symbol:
-            best_symbol = ""
-
-        self._symbol_cache[name_clean] = best_symbol
-        self._save_symbol_cache()
-        return best_symbol
+        return None
 
     def _fetch_chart_data(self, symbol, range_str="6mo"):
         """
