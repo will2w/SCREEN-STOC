@@ -2,7 +2,7 @@
 """
 app.py
 ------
-QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策系統 (深度新聞要點與操盤點版)
+QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策系統 (高科技賽博龐克戰情室版)
 """
 
 import streamlit as st
@@ -277,7 +277,7 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
     ])
     
     with tab1:
-        st.markdown("### 📊 通過多維度量化檢驗之合格股票池")
+        st.markdown("### 📊 通通過多維度量化檢驗之合格股票池")
         excel_view_df = df_res.drop(columns=['raw_price', '貨幣', '建議倉位比例', '建議配置金額 (€)', '不合格原因'], errors='ignore')
         st.dataframe(excel_view_df, use_container_width=True, height=600)
         
@@ -380,7 +380,7 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
                         """)
                         
                         st.markdown("---")
-                        st.markdown("##### ⚡ 華爾街 AI 戰情情報 (新聞要點與關鍵操盤點)")
+                        st.markdown("##### ⚡ 華爾街 AI 戰情情報 (新聞要點拆解與精準操盤指引)")
                         
                         with st.spinner(f"正在同步 {row['股票名稱']} 實時情報與操盤邏輯中..."):
                             ai_insight, rss_news = cached_ai_analysis(
