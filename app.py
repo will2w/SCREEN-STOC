@@ -2,7 +2,7 @@
 """
 app.py
 ------
-QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策系統 (極致賽博龐克/科幻戰情室版)
+QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策系統 (高科技賽博龐克極速版)
 """
 
 import streamlit as st
@@ -19,10 +19,9 @@ st.set_page_config(
     layout="wide"
 )
 
-# ⚡ 注入極致賽博龐克、霓虹發光、戰情室掃描線與未來科幻風格 CSS
+# ⚡ 注入極致賽博龐克、霓虹發光與戰情室風格 CSS
 st.markdown("""
 <style>
-    /* 全局賽博龐克背景與 CRT 掃描線特效 */
     .stApp {
         background-color: #030712;
         background-image: 
@@ -33,8 +32,6 @@ st.markdown("""
         color: #F3F4F6;
         font-family: 'Share Tech Mono', 'Courier New', monospace, sans-serif;
     }
-
-    /* 頂部科幻終端標題 (霓虹藍紫發光) */
     .cyber-header {
         font-size: 3rem;
         font-weight: 900;
@@ -46,7 +43,6 @@ st.markdown("""
         letter-spacing: 0.05em;
         text-transform: uppercase;
     }
-    
     .cyber-sub {
         font-size: 1rem;
         color: #06B6D4;
@@ -60,16 +56,12 @@ st.markdown("""
         letter-spacing: 0.1em;
         text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
     }
-
-    /* 側邊欄戰情室面板化 */
     [data-testid="stSidebar"] {
         background-color: rgba(3, 7, 18, 0.92);
         backdrop-filter: blur(16px);
         border-right: 1px solid rgba(34, 211, 238, 0.3);
         box-shadow: 5px 0 30px rgba(0, 0, 0, 0.8);
     }
-
-    /* 戰情室玻璃擬態數據表格框 */
     div.stDataFrame {
         border: 1px solid rgba(34, 211, 238, 0.35);
         border-radius: 0.5rem;
@@ -78,13 +70,6 @@ st.markdown("""
         padding: 0.5rem;
         box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.9), 0 0 25px rgba(34, 211, 238, 0.12);
     }
-    
-    div.stDataFrame:hover {
-        border-color: rgba(34, 211, 238, 0.7);
-        box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.95), 0 0 35px rgba(34, 211, 238, 0.25);
-    }
-
-    /* 標籤頁 (Tabs) 賽博霓虹科技化 */
     .stTabs [data-baseweb="tab-list"] {
         gap: 12px;
         background-color: rgba(10, 15, 30, 0.95);
@@ -93,7 +78,6 @@ st.markdown("""
         border: 1px solid rgba(34, 211, 238, 0.3);
         backdrop-filter: blur(10px);
     }
-    
     .stTabs [data-baseweb="tab"] {
         height: 44px;
         background-color: transparent;
@@ -104,21 +88,17 @@ st.markdown("""
         letter-spacing: 0.05em;
         transition: all 0.3s ease;
     }
-    
     .stTabs [data-baseweb="tab"]:hover {
         color: #22D3EE;
         background-color: rgba(34, 211, 238, 0.1);
         text-shadow: 0 0 10px rgba(34, 211, 238, 0.7);
     }
-    
     .stTabs [aria-selected="true"] {
         background: linear-gradient(135deg, #0891B2 0%, #4F46E5 50%, #9333EA 100%);
         color: #FFFFFF !important;
         box-shadow: 0 0 25px rgba(34, 211, 238, 0.7);
         border: 1px solid rgba(255, 255, 255, 0.2);
     }
-
-    /* 賽博發光按鈕 */
     .stButton button[kind="primary"] {
         background: linear-gradient(135deg, #06B6D4 0%, #6366F1 50%, #D946EF 100%);
         border: 1px solid rgba(255, 255, 255, 0.3);
@@ -130,31 +110,18 @@ st.markdown("""
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         text-transform: uppercase;
     }
-    
     .stButton button[kind="primary"]:hover {
         background: linear-gradient(135deg, #0891B2 0%, #4F46E5 50%, #C026D3 100%);
         box-shadow: 0 0 45px rgba(217, 70, 239, 0.8), 0 0 20px rgba(6, 182, 212, 0.8);
         transform: translateY(-2px) scale(1.02);
     }
-
-    /* 互動 Expander 發光邊框 */
     div.streamlit-expanderHeader {
         background-color: rgba(10, 15, 30, 0.9);
         border: 1px solid rgba(34, 211, 238, 0.3);
         border-radius: 0.4rem;
         color: #F3F4F6;
         font-weight: 700;
-        transition: all 0.3s ease;
     }
-    
-    div.streamlit-expanderHeader:hover {
-        border-color: rgba(34, 211, 238, 0.8);
-        color: #22D3EE;
-        box-shadow: 0 0 15px rgba(34, 211, 238, 0.3);
-        background-color: rgba(15, 23, 42, 0.95);
-    }
-
-    /* Metric 數據面板科幻化改造 */
     [data-testid="stMetric"] {
         background-color: rgba(10, 15, 30, 0.85);
         border: 1px solid rgba(34, 211, 238, 0.25);
@@ -231,7 +198,6 @@ total_capital = st.sidebar.number_input(
 st.sidebar.markdown("---")
 run_btn = st.sidebar.button("⚡ 啟動量子量化篩選與投組構建", type="primary", use_container_width=True)
 
-# 📡 實時 RSS 財經新聞抓取函式
 @st.cache_data(ttl=1800)
 def fetch_stock_rss_news(symbol_or_name):
     try:
@@ -239,7 +205,7 @@ def fetch_stock_rss_news(symbol_or_name):
         rss_url = f"https://news.google.com/rss/search?q={urllib.parse.quote(clean_query + ' stock')}&hl=en-US&gl=US&ceid=US:en"
         feed = feedparser.parse(rss_url)
         news_items = []
-        for entry in feed.entries[:3]:
+        for entry in feed.entries[:2]:
             title = entry.get('title', 'No Title')
             link = entry.get('link', '#')
             published = entry.get('published', 'Recent')
@@ -257,7 +223,7 @@ if run_btn:
         
         status_text.text("⚡ [01/03] 建立量子安全連線、同步全球宏觀與實時流動性狀態...")
         progress_bar.progress(25)
-        time.sleep(0.3)
+        time.sleep(0.2)
         
         status_text.text("🚀 [02/03] 執行多維度量化引擎、威科夫微觀結構與華爾街評分運算...")
         progress_bar.progress(60)
@@ -272,7 +238,7 @@ if run_btn:
         
         status_text.text("💎 [03/03] 計算 Sharpe、IC 分數與 100% 歸一化動態頭寸配置...")
         progress_bar.progress(90)
-        time.sleep(0.3)
+        time.sleep(0.2)
         
         if df_res.empty and df_unqualified.empty:
             progress_bar.empty()
@@ -286,7 +252,7 @@ if run_btn:
             
             progress_bar.progress(100)
             status_text.text("✨ 量子量化全景篩選與 Portfolio Top 投組建構完畢！")
-            time.sleep(0.4)
+            time.sleep(0.3)
             
             progress_bar.empty()
             status_text.empty()
@@ -381,7 +347,7 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
             st.plotly_chart(fig_pie, use_container_width=True)
             
     with tab5:
-        st.markdown("### 🏆 依華爾街投資建議分類之深度技術、基本面與 AI 自動解讀")
+        st.markdown("### 🏆 依華爾街投資建議分類之深度技術、基本面與極速 AI 速報")
         
         @st.cache_data(ttl=3600)
         def cached_ai_analysis(stock_name, symbol, tech_str, fundamental_str):
@@ -410,16 +376,13 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
                         st.markdown(f"""
                         * **量化預測 IC**: `{row['量化預測 IC']}` | **破產預警 (Altman Z)**: `{row['Altman Z']}`
                         * **建議倉位配置**: `{row['建議倉位比例']}` (約 `{row['建議配置金額 (€)']:,} €`)
-                        * **📊 技術面分析 (威科夫結構與 ATR)**:  
-                          > `{row['技術面分析 (威科夫/ATR)']}`
-                        * **📰 基本面與內部解讀**:  
-                          > `{row['消息面與基本面解讀']}`
+                        * **📊 技術面分析 (威科夫結構與 ATR)**: `{row['技術面分析 (威科夫/ATR)']}`
                         """)
                         
                         st.markdown("---")
-                        st.markdown("##### 🤖 華爾街 AI 動態解讀與未來走勢預測 (結合實時 RSS)")
+                        st.markdown("##### ⚡ 華爾街 AI 極速速報 (即時 RSS + 核心操盤指引)")
                         
-                        with st.spinner(f"正在自動合成 {row['股票名稱']} 的即時新聞、技術面與 AI 預測..."):
+                        with st.spinner(f"正在同步 {row['股票名稱']} 實時情報中..."):
                             ai_insight, rss_news = cached_ai_analysis(
                                 stock_name=row['股票名稱'],
                                 symbol=row['股票代碼'],
@@ -428,16 +391,16 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
                             )
                         
                         if rss_news:
-                            with st.expander("查看參考的實時 RSS 財經新聞來源"):
+                            with st.expander("查看參考的即時 RSS 財經頭條"):
                                 for news in rss_news:
                                     st.markdown(f"- [{news['title']}]({news['link']}) `({news['published'][:16]})`")
                         
                         st.markdown(ai_insight)
                         
         st.markdown("---")
-        st.markdown("### 🤖 Gemini AI 總結與投研報告")
-        if st.button("✨ 啟動 Gemini AI 量子深度診斷", type="primary"):
-            with st.spinner("正在調用量子大模型進行全方位指標與總結解讀..."):
+        st.markdown("### 🤖 Gemini AI 全局戰情室總結報告")
+        if st.button("✨ 啟動 Gemini AI 巨集戰情室診斷", type="primary"):
+            with st.spinner("正在生成全局總結報告..."):
                 ai_report = engine.analyze_with_gemini(
                     df_res, 
                     st.session_state['credit_impulse'],
