@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策引擎 (華爾街投研專業升級版)
+QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策引擎 (高效極速精簡版)
 """
 
 import os
@@ -51,9 +51,6 @@ class QuantScreenerEngine:
             pass
 
     def _load_watchlist(self):
-        """
-        智慧載入清單：自動相容「雙欄對應檔 (Stock Name & Symbol)」或「單欄名稱檔」
-        """
         try:
             if os.path.exists("Watchlist_Stocks.csv"):
                 df = pd.read_csv("Watchlist_Stocks.csv")
@@ -342,31 +339,31 @@ class QuantScreenerEngine:
                     "不合格原因": "；".join(reasons), "量化預測 IC": ic_score, "Sharpe Ratio": sharpe,
                     "Piotroski F": f"{f_score}/9", "Altman Z": z_score, 
                     "技術面分析 (威科夫/ATR)": "流動性枯竭，短線偏弱，建議落袋或避開",
-                    "消息面與基本面解讀": "交易熱度不足，機構資金暫未進駐，基本面有待觀察",
+                    "消息面與基本面解讀": "交易熱度不足，機構資金暫未進駐",
                     "建議倉位比例": "0%", "建議配置金額 (€)": 0.0, "ATR 停損位": f"{curr_symbol}{max(0, price - 2 * atr):,.2f}",
                     "狀態": "不合格 (流動性不足)"
                 }
 
             if comp_score >= 82:
                 eval_result, investment_rec = "極優 (Alpha 顯著)", "強力買進 (Strong Buy)"
-                tech_analysis = "威科夫 Phase C (Spring 彈簧洗盤確認) - 主力吸籌完成，量價齊揚，突破關鍵壓力和均線多頭排列。"
-                fundamental_news = "基本面強勁（Piotroski F高分），機構買盤積極，受惠於宏觀信貸擴張與產業景氣高成長。"
+                tech_analysis = "威科夫 Phase C (Spring 彈簧洗盤確認) - 主力吸籌完成，量價齊揚。"
+                fundamental_news = "基本面強勁（Piotroski F高分），機構買盤積極。"
             elif comp_score >= 70:
                 eval_result, investment_rec = "優良 (多頭排列)", "逢低吸納 (Accumulate)"
-                tech_analysis = "威科夫 Phase B/C (箱體震盪蓄勢) - 回測支撐帶量守住，ATR 波動率收斂，具備上升潛力。"
-                fundamental_news = "財務結構穩健，現金流充沛，估值具備安全邊際，利多消息陸續發酵。"
+                tech_analysis = "威科夫 Phase B/C (箱體震盪蓄勢) - 回測支撐帶量守住。"
+                fundamental_news = "財務結構穩健，現金流充沛，估值具備安全邊際。"
             elif comp_score >= 58:
                 eval_result, investment_rec = "中立 (震盪築底)", "區間操作 (Range Trade)"
-                tech_analysis = "威科夫 Phase B (橫向累積) - 均線糾結，短線於區間中段運行，等待方向選擇。"
-                fundamental_news = "多空消息交織，業績符合預期但缺乏爆發性成長催化劑，建議逢低分批佈局。"
+                tech_analysis = "威科夫 Phase B (橫向累積) - 均線糾結，等待方向選擇。"
+                fundamental_news = "多空消息交織，業績符合預期但缺乏爆發性成長。"
             elif comp_score >= 45:
                 eval_result, investment_rec = "偏弱 (動能不足)", "減碼觀望 (Reduce / Watch)"
-                tech_analysis = "威科夫 Phase D (弱勢反彈遭逢賣壓) - 上方均線反壓重，動能指標走弱。"
-                fundamental_news = "短期面臨產業逆風或財報不如預期，資金有移轉至強勢標的的跡象。"
+                tech_analysis = "威科夫 Phase D (弱勢反彈遭逢賣壓) - 上方均線反壓重。"
+                fundamental_news = "短期面臨產業逆風或財報不如預期。"
             else:
                 eval_result, investment_rec = "風險 (空頭排列)", "強力賣出 / 避開 (Sell / Avoid)"
-                tech_analysis = "威科夫 Phase E (下降趨勢派發) - 跌破重要支撐，ATR 放大，下行風險顯著。"
-                fundamental_news = "基本面轉弱或總體經濟逆風衝擊，利空消息頻傳，建議嚴格執行停損。"
+                tech_analysis = "威科夫 Phase E (下降趨勢派發) - 跌破重要支撐。"
+                fundamental_news = "基本面轉弱或總體經濟逆風衝擊，建議嚴格停損。"
 
             return {
                 "股票名稱": stock, "股票代碼": symbol, "最新現價": f"{curr_symbol}{price:,.2f}", "raw_price": price,
@@ -384,7 +381,7 @@ class QuantScreenerEngine:
                 "股票名稱": stock, "股票代碼": symbol, "最新現價": "N/A", "raw_price": -1.0,
                 "貨幣": "USD", "綜合評分": 0.0, "評估結果": "不合格", "投資建議": "暫時剔除 (Exclude)",
                 "不合格原因": f"例外錯誤 ({str(e)})", "量化預測 IC": 0.0, "Sharpe Ratio": 0.0,
-                "Piotroski F": "5/9", "Altman Z": z_score if 'z_score' in locals() else 2.5, 
+                "Piotroski F": "5/9", "Altman Z": 2.5, 
                 "技術面分析 (威科夫/ATR)": "計算例外", "消息面與基本面解讀": "系統內部錯誤",
                 "建議倉位比例": "0%", "建議配置金額 (€)": 0.0, "ATR 停損位": "N/A", "狀態": "不合格 (例外錯誤)"
             }
@@ -441,69 +438,68 @@ class QuantScreenerEngine:
     def analyze_with_gemini(self, df_results, credit_impulse_status, m2_gap):
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
-            return "⚠️ 未檢測到 GEMINI_API_KEY 環境變數，無法生成 AI 深度診斷報告。"
+            return "⚠️ 未檢測到 GEMINI_API_KEY 環境變數。"
 
         data_summary = df_results.head(15).to_dict(orient="records")
         prompt = f"""
-作為華爾街量化投研與總體經濟分析師，請針對以下全球多市場量化篩選與 Portfolio Top 15 核心投組產出專業投研報告：
-- 宏觀信貸脈衝狀態：{credit_impulse_status}
-- 超額 M2 剪刀差：+{m2_gap}%
-- Top 15 投組摘要：{json.dumps(data_summary, ensure_ascii=False, indent=2)}
+作為華爾街量化分析師，請對 Top 15 核心投組產出極簡速報：
+- 宏觀狀態：{credit_impulse_status} (M2剪刀差 +{m2_gap}%)
+- 投組摘要：{json.dumps(data_summary, ensure_ascii=False)}
+請給出 3 點核心操作指引（條列式，繁體中文）。
 """
         models = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
         headers = {"Content-Type": "application/json"}
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"maxOutputTokens": 4096, "temperature": 0.3}
+            "generationConfig": {"maxOutputTokens": 600, "temperature": 0.2}
         }
 
         for model in models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
             try:
-                response = Session().post(url, headers=headers, json=payload, timeout=60)
+                response = Session().post(url, headers=headers, json=payload, timeout=20)
                 if response.status_code == 200:
                     res_json = response.json()
                     if "candidates" in res_json and len(res_json["candidates"]) > 0:
                         return res_json['candidates'][0]['content']['parts'][0]['text']
             except Exception:
                 continue
-        return "❌ Gemini AI 分析生成失敗，請稍後再試。"
+        return "❌ AI 報告生成失敗。"
 
     def analyze_stock_with_ai_and_rss(self, stock_name, symbol, rss_news_list, tech_str, fundamental_str):
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
-            return "⚠️ 未檢測到 GEMINI_API_KEY，無法生成 AI 動態投研報告。"
+            return "⚠️ 未檢測到 API Key"
 
-        news_summary_text = "\n".join([f"- {n['title']} ({n['published']})" for n in rss_news_list]) if rss_news_list else "暫無近期即時財經新聞。"
+        news_summary_text = "\n".join([f"- {n['title']}" for n in rss_news_list[:2]]) if rss_news_list else "暫無近期即時新聞。"
 
         prompt = f"""
-作為華爾街量化投研與資深總經分析師，請針對以下標的進行動態基本面與消息面解讀：
-- 股票名稱：{stock_name} ({symbol})
-- 系統內部技術面與威科夫結構：{tech_str}
-- 系統內部基本面與財務解讀：{fundamental_str}
-- 實時抓取的最新 RSS 財經新聞標題：
-{news_summary_text}
+請以華爾街量化分析師視角，用繁體中文對以下標的進行極簡速報（嚴格控制在 150 字以內，條列式）：
+- 標的：{stock_name} ({symbol})
+- 技術面：{tech_str}
+- 基本面：{fundamental_str}
+- 最新新聞：{news_summary_text}
 
-請產出一份結構清晰、專業且前瞻的投研報告（使用繁體中文）：
-1. **即時新聞與消息面解讀**：綜合上述最新新聞，分析近期市場動態對該公司的實質影響。
-2. **基本面與體質總結**：結合財務結構與機構動向給出評價。
-3. **未來趨勢與風險預測**：給出未來 1-3 個月的關鍵觀察價位、潛在利多或風險提示。
+格式如下：
+1. **📰 消息面快訊**：(一句話總結近期動向)
+2. **📊 核心判斷**：(多空優勢或風險)
+3. **🎯 操盤指引**：(買進/觀望與關鍵防守點)
 """
         models = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
         headers = {"Content-Type": "application/json"}
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"maxOutputTokens": 2048, "temperature": 0.3}
+            "generationConfig": {"maxOutputTokens": 300, "temperature": 0.2}
         }
 
         for model in models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
             try:
-                response = Session().post(url, headers=headers, json=payload, timeout=30)
+                response = Session().post(url, headers=headers, json=payload, timeout=15)
                 if response.status_code == 200:
                     res_json = response.json()
                     if "candidates" in res_json and len(res_json["candidates"]) > 0:
                         return res_json['candidates'][0]['content']['parts'][0]['text']
             except Exception:
                 continue
-        return "❌ AI 實時解讀生成失敗，請稍後再試。"
+        return "❌ AI 速報生成逾時或失敗。"
