@@ -2,7 +2,7 @@
 """
 app.py
 ------
-QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策系統 (內建 RSS 實時新聞抓取升級版)
+QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策系統 (極致賽博龐克/科幻戰情室版)
 """
 
 import streamlit as st
@@ -14,110 +14,163 @@ import urllib.parse
 from screener_engine import QuantScreenerEngine
 
 st.set_page_config(
-    page_title="QUANTUM ALPHA TERMINAL — 智能量化交易系統",
+    page_title="QUANTUM ALPHA TERMINAL // CYBERNETIC v2026",
     page_icon="⚡",
     layout="wide"
 )
 
-# ⚡ 注入賽博龐克動態網格、發光粒子與流光玻璃擬態樣式
+# ⚡ 注入極致賽博龐克、霓虹發光、戰情室掃描線與未來科幻風格 CSS
 st.markdown("""
 <style>
+    /* 全局賽博龐克背景與 CRT 掃描線特效 */
     .stApp {
-        background-color: #050814;
+        background-color: #030712;
         background-image: 
-            radial-gradient(circle at 50% 0%, rgba(14, 165, 233, 0.12) 0%, transparent 50%),
-            linear-gradient(rgba(14, 165, 233, 0.03) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(14, 165, 233, 0.03) 1px, transparent 1px);
-        background-size: 100% 100%, 40px 40px, 40px 40px;
-        color: #E2E8F0;
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            radial-gradient(circle at 50% 0%, rgba(6, 182, 212, 0.15) 0%, transparent 60%),
+            linear-gradient(rgba(6, 182, 212, 0.04) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(6, 182, 212, 0.04) 1px, transparent 1px);
+        background-size: 100% 100%, 30px 30px, 30px 30px;
+        color: #F3F4F6;
+        font-family: 'Share Tech Mono', 'Courier New', monospace, sans-serif;
     }
-    .tech-header {
-        font-size: 2.8rem;
+
+    /* 頂部科幻終端標題 (霓虹藍紫發光) */
+    .cyber-header {
+        font-size: 3rem;
         font-weight: 900;
-        background: linear-gradient(135deg, #38BDF8 0%, #818CF8 40%, #C084FC 80%, #F472B6 100%);
+        background: linear-gradient(135deg, #22D3EE 0%, #818CF8 40%, #E879F9 80%, #34D399 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        text-shadow: 0 0 40px rgba(56, 189, 248, 0.4);
-        margin-bottom: 0.2rem;
-        letter-spacing: -0.025em;
+        text-shadow: 0 0 35px rgba(34, 211, 238, 0.6), 0 0 70px rgba(232, 121, 249, 0.3);
+        margin-bottom: 0.1rem;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
     }
-    .tech-sub {
-        font-size: 1.1rem;
-        color: #94A3B8;
-        font-weight: 400;
-        margin-bottom: 2rem;
-        border-left: 3px solid #38BDF8;
-        padding-left: 0.75rem;
-        background: linear-gradient(90deg, rgba(56, 189, 248, 0.1) 0%, transparent 100%);
-        padding-top: 0.2rem;
-        padding-bottom: 0.2rem;
-    }
-    [data-testid="stSidebar"] {
-        background-color: rgba(11, 15, 25, 0.85);
-        backdrop-filter: blur(12px);
-        border-right: 1px solid rgba(56, 189, 248, 0.2);
-    }
-    div.stDataFrame {
-        border: 1px solid rgba(56, 189, 248, 0.25);
-        border-radius: 0.75rem;
-        background-color: rgba(15, 23, 42, 0.75);
-        backdrop-filter: blur(10px);
-        padding: 0.5rem;
-        box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.7), 0 0 20px rgba(56, 189, 248, 0.08);
-    }
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 10px;
-        background-color: rgba(15, 23, 42, 0.9);
-        padding: 8px;
-        border-radius: 0.75rem;
-        border: 1px solid rgba(56, 189, 248, 0.2);
-        backdrop-filter: blur(8px);
-    }
-    .stTabs [data-baseweb="tab"] {
-        height: 42px;
-        background-color: transparent;
-        border-radius: 6px;
-        color: #94A3B8;
+    
+    .cyber-sub {
+        font-size: 1rem;
+        color: #06B6D4;
         font-weight: 600;
+        margin-bottom: 2rem;
+        border-left: 4px solid #22D3EE;
+        padding-left: 0.75rem;
+        background: linear-gradient(90deg, rgba(6, 182, 212, 0.15) 0%, transparent 100%);
+        padding-top: 0.3rem;
+        padding-bottom: 0.3rem;
+        letter-spacing: 0.1em;
+        text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
+    }
+
+    /* 側邊欄戰情室面板化 */
+    [data-testid="stSidebar"] {
+        background-color: rgba(3, 7, 18, 0.92);
+        backdrop-filter: blur(16px);
+        border-right: 1px solid rgba(34, 211, 238, 0.3);
+        box-shadow: 5px 0 30px rgba(0, 0, 0, 0.8);
+    }
+
+    /* 戰情室玻璃擬態數據表格框 */
+    div.stDataFrame {
+        border: 1px solid rgba(34, 211, 238, 0.35);
+        border-radius: 0.5rem;
+        background-color: rgba(10, 15, 30, 0.85);
+        backdrop-filter: blur(12px);
+        padding: 0.5rem;
+        box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.9), 0 0 25px rgba(34, 211, 238, 0.12);
+    }
+    
+    div.stDataFrame:hover {
+        border-color: rgba(34, 211, 238, 0.7);
+        box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.95), 0 0 35px rgba(34, 211, 238, 0.25);
+    }
+
+    /* 標籤頁 (Tabs) 賽博霓虹科技化 */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 12px;
+        background-color: rgba(10, 15, 30, 0.95);
+        padding: 8px;
+        border-radius: 0.5rem;
+        border: 1px solid rgba(34, 211, 238, 0.3);
+        backdrop-filter: blur(10px);
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        height: 44px;
+        background-color: transparent;
+        border-radius: 4px;
+        color: #9CA3AF;
+        font-weight: 700;
         border: none;
+        letter-spacing: 0.05em;
         transition: all 0.3s ease;
     }
+    
     .stTabs [data-baseweb="tab"]:hover {
-        color: #38BDF8;
-        background-color: rgba(56, 189, 248, 0.08);
+        color: #22D3EE;
+        background-color: rgba(34, 211, 238, 0.1);
+        text-shadow: 0 0 10px rgba(34, 211, 238, 0.7);
     }
+    
     .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, #0284C7 0%, #4338CA 100%);
+        background: linear-gradient(135deg, #0891B2 0%, #4F46E5 50%, #9333EA 100%);
         color: #FFFFFF !important;
-        box-shadow: 0 0 20px rgba(2, 132, 199, 0.6);
-    }
-    .stButton button[kind="primary"] {
-        background: linear-gradient(135deg, #0284C7 0%, #6366F1 50%, #9333EA 100%);
+        box-shadow: 0 0 25px rgba(34, 211, 238, 0.7);
         border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    /* 賽博發光按鈕 */
+    .stButton button[kind="primary"] {
+        background: linear-gradient(135deg, #06B6D4 0%, #6366F1 50%, #D946EF 100%);
+        border: 1px solid rgba(255, 255, 255, 0.3);
         color: white;
-        font-weight: 700;
-        border-radius: 0.5rem;
-        box-shadow: 0 0 25px rgba(56, 189, 248, 0.4);
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        border-radius: 0.4rem;
+        box-shadow: 0 0 30px rgba(6, 182, 212, 0.5);
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        text-transform: uppercase;
     }
+    
     .stButton button[kind="primary"]:hover {
-        background: linear-gradient(135deg, #0369A1 0%, #4F46E5 50%, #7E22CE 100%);
-        box-shadow: 0 0 35px rgba(147, 51, 234, 0.7);
-        transform: translateY(-2px) scale(1.01);
+        background: linear-gradient(135deg, #0891B2 0%, #4F46E5 50%, #C026D3 100%);
+        box-shadow: 0 0 45px rgba(217, 70, 239, 0.8), 0 0 20px rgba(6, 182, 212, 0.8);
+        transform: translateY(-2px) scale(1.02);
     }
+
+    /* 互動 Expander 發光邊框 */
     div.streamlit-expanderHeader {
-        background-color: rgba(15, 23, 42, 0.8);
-        border: 1px solid rgba(56, 189, 248, 0.2);
+        background-color: rgba(10, 15, 30, 0.9);
+        border: 1px solid rgba(34, 211, 238, 0.3);
+        border-radius: 0.4rem;
+        color: #F3F4F6;
+        font-weight: 700;
+        transition: all 0.3s ease;
+    }
+    
+    div.streamlit-expanderHeader:hover {
+        border-color: rgba(34, 211, 238, 0.8);
+        color: #22D3EE;
+        box-shadow: 0 0 15px rgba(34, 211, 238, 0.3);
+        background-color: rgba(15, 23, 42, 0.95);
+    }
+
+    /* Metric 數據面板科幻化改造 */
+    [data-testid="stMetric"] {
+        background-color: rgba(10, 15, 30, 0.85);
+        border: 1px solid rgba(34, 211, 238, 0.25);
+        padding: 15px;
         border-radius: 0.5rem;
-        color: #E2E8F0;
-        font-weight: 600;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+    }
+    [data-testid="stMetricValue"] {
+        color: #22D3EE !important;
+        text-shadow: 0 0 10px rgba(34, 211, 238, 0.5);
     }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="tech-header">⚡ QUANTUM ALPHA TERMINAL</div>', unsafe_allow_html=True)
-st.markdown('<div class="tech-sub">GLOBAL QUANTITATIVE SCREENING & DYNAMIC ASSET ALLOCATION ENGINE // 2026 CYBERNETIC EDITION</div>', unsafe_allow_html=True)
+st.markdown('<div class="cyber-header">⚡ QUANTUM ALPHA TERMINAL</div>', unsafe_allow_html=True)
+st.markdown('<div class="cyber-sub">[SYSTEM_ACTIVE] // GLOBAL QUANTITATIVE SCREENING & DYNAMIC ASSET ALLOCATION // 2026 CYBERNETIC WARFARE EDITION</div>', unsafe_allow_html=True)
 
 engine = QuantScreenerEngine()
 watchlist = engine.watchlist
@@ -126,7 +179,7 @@ market_state = engine.get_current_market_state()
 default_impulse = market_state["credit_impulse"]
 default_m2 = market_state["m2_gap"]
 
-st.sidebar.header("🎛️ 策略參數與過濾面板")
+st.sidebar.header("🎛️ 戰情室控制台")
 st.sidebar.info(f"🌐 實時宏觀同步 ({market_state['sync_date']}): 10年美債 {market_state['benchmark_tnx']}%")
 
 impulse_options = [
@@ -178,15 +231,15 @@ total_capital = st.sidebar.number_input(
 st.sidebar.markdown("---")
 run_btn = st.sidebar.button("⚡ 啟動量子量化篩選與投組構建", type="primary", use_container_width=True)
 
-# 📡 實時 RSS 財經新聞抓取輔助函式
-@st.cache_data(ttl=1800) # 快取 30 分鐘避免頻繁請求
+# 📡 實時 RSS 財經新聞抓取函式
+@st.cache_data(ttl=1800)
 def fetch_stock_rss_news(symbol_or_name):
     try:
         clean_query = str(symbol_or_name).split(".")[0].strip()
         rss_url = f"https://news.google.com/rss/search?q={urllib.parse.quote(clean_query + ' stock')}&hl=en-US&gl=US&ceid=US:en"
         feed = feedparser.parse(rss_url)
         news_items = []
-        for entry in feed.entries[:3]: # 取前 3 條最新新聞
+        for entry in feed.entries[:3]:
             title = entry.get('title', 'No Title')
             link = entry.get('link', '#')
             published = entry.get('published', 'Recent')
@@ -294,7 +347,8 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
             fig_top15.update_layout(
                 plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)',
-                font_color='#E2E8F0'
+                font_color='#F3F4F6',
+                title_font_color='#22D3EE'
             )
             st.plotly_chart(fig_top15, use_container_width=True)
         
@@ -321,12 +375,25 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
             fig_pie.update_layout(
                 plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)',
-                font_color='#E2E8F0'
+                font_color='#F3F4F6',
+                title_font_color='#22D3EE'
             )
             st.plotly_chart(fig_pie, use_container_width=True)
             
     with tab5:
-        st.markdown("### 🏆 依華爾街投資建議分類之深度技術、基本面與實時 RSS 新聞解讀")
+        st.markdown("### 🏆 依華爾街投資建議分類之深度技術、基本面與 AI 自動解讀")
+        
+        @st.cache_data(ttl=3600)
+        def cached_ai_analysis(stock_name, symbol, tech_str, fundamental_str):
+            news_list = fetch_stock_rss_news(stock_name if stock_name else symbol)
+            return engine.analyze_stock_with_ai_and_rss(
+                stock_name=stock_name,
+                symbol=symbol,
+                rss_news_list=news_list,
+                tech_str=tech_str,
+                fundamental_str=fundamental_str
+            ), news_list
+
         rec_types = df_res['投資建議'].unique()
         for rec in rec_types:
             sub_df = df_res[df_res['投資建議'] == rec].head(10)
@@ -349,15 +416,23 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
                           > `{row['消息面與基本面解讀']}`
                         """)
                         
-                        # 📡 嵌入實時 RSS 新聞抓取模組
                         st.markdown("---")
-                        st.markdown("##### 📡 實時 RSS 財經新聞頭條 (Google News & Yahoo Finance)")
-                        rss_news = fetch_stock_rss_news(row['股票名稱'] if row['股票名稱'] else row['股票代碼'])
+                        st.markdown("##### 🤖 華爾街 AI 動態解讀與未來走勢預測 (結合實時 RSS)")
+                        
+                        with st.spinner(f"正在自動合成 {row['股票名稱']} 的即時新聞、技術面與 AI 預測..."):
+                            ai_insight, rss_news = cached_ai_analysis(
+                                stock_name=row['股票名稱'],
+                                symbol=row['股票代碼'],
+                                tech_str=row['技術面分析 (威科夫/ATR)'],
+                                fundamental_str=row['消息面與基本面解讀']
+                            )
+                        
                         if rss_news:
-                            for news in rss_news:
-                                st.markdown(f"- [{news['title']}]({news['link']}) `({news['published'][:16]})`")
-                        else:
-                            st.caption("⚠️ 目前暫無該標的之即時 RSS 財經新聞更新。")
+                            with st.expander("查看參考的實時 RSS 財經新聞來源"):
+                                for news in rss_news:
+                                    st.markdown(f"- [{news['title']}]({news['link']}) `({news['published'][:16]})`")
+                        
+                        st.markdown(ai_insight)
                         
         st.markdown("---")
         st.markdown("### 🤖 Gemini AI 總結與投研報告")
