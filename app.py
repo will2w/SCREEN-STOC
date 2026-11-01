@@ -2,13 +2,15 @@
 """
 app.py
 ------
-QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策系統 (動態網格與未來感交互升級版)
+QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策系統 (內建 RSS 實時新聞抓取升級版)
 """
 
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import time
+import feedparser
+import urllib.parse
 from screener_engine import QuantScreenerEngine
 
 st.set_page_config(
@@ -20,7 +22,6 @@ st.set_page_config(
 # ⚡ 注入賽博龐克動態網格、發光粒子與流光玻璃擬態樣式
 st.markdown("""
 <style>
-    /* 全局賽博龐克暗色主題與動態網格背景 */
     .stApp {
         background-color: #050814;
         background-image: 
@@ -31,8 +32,6 @@ st.markdown("""
         color: #E2E8F0;
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
-    
-    /* 頂部標題未來感雷射漸層與發光特效 */
     .tech-header {
         font-size: 2.8rem;
         font-weight: 900;
@@ -43,7 +42,6 @@ st.markdown("""
         margin-bottom: 0.2rem;
         letter-spacing: -0.025em;
     }
-    
     .tech-sub {
         font-size: 1.1rem;
         color: #94A3B8;
@@ -55,15 +53,11 @@ st.markdown("""
         padding-top: 0.2rem;
         padding-bottom: 0.2rem;
     }
-
-    /* 側邊欄高科技半透明面板化 */
     [data-testid="stSidebar"] {
         background-color: rgba(11, 15, 25, 0.85);
         backdrop-filter: blur(12px);
         border-right: 1px solid rgba(56, 189, 248, 0.2);
     }
-
-    /* 玻璃擬態數據框與動態微光懸停 */
     div.stDataFrame {
         border: 1px solid rgba(56, 189, 248, 0.25);
         border-radius: 0.75rem;
@@ -71,15 +65,7 @@ st.markdown("""
         backdrop-filter: blur(10px);
         padding: 0.5rem;
         box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.7), 0 0 20px rgba(56, 189, 248, 0.08);
-        transition: all 0.3s ease;
     }
-    
-    div.stDataFrame:hover {
-        border-color: rgba(56, 189, 248, 0.5);
-        box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.8), 0 0 25px rgba(56, 189, 248, 0.15);
-    }
-    
-    /* 標籤頁 (Tabs) 未來科技感改造 */
     .stTabs [data-baseweb="tab-list"] {
         gap: 10px;
         background-color: rgba(15, 23, 42, 0.9);
@@ -88,7 +74,6 @@ st.markdown("""
         border: 1px solid rgba(56, 189, 248, 0.2);
         backdrop-filter: blur(8px);
     }
-    
     .stTabs [data-baseweb="tab"] {
         height: 42px;
         background-color: transparent;
@@ -98,19 +83,15 @@ st.markdown("""
         border: none;
         transition: all 0.3s ease;
     }
-    
     .stTabs [data-baseweb="tab"]:hover {
         color: #38BDF8;
         background-color: rgba(56, 189, 248, 0.08);
     }
-    
     .stTabs [aria-selected="true"] {
         background: linear-gradient(135deg, #0284C7 0%, #4338CA 100%);
         color: #FFFFFF !important;
         box-shadow: 0 0 20px rgba(2, 132, 199, 0.6);
     }
-
-    /* 按鈕雷射發光感與點擊回饋 */
     .stButton button[kind="primary"] {
         background: linear-gradient(135deg, #0284C7 0%, #6366F1 50%, #9333EA 100%);
         border: 1px solid rgba(255, 255, 255, 0.2);
@@ -120,27 +101,17 @@ st.markdown("""
         box-shadow: 0 0 25px rgba(56, 189, 248, 0.4);
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    
     .stButton button[kind="primary"]:hover {
         background: linear-gradient(135deg, #0369A1 0%, #4F46E5 50%, #7E22CE 100%);
         box-shadow: 0 0 35px rgba(147, 51, 234, 0.7);
         transform: translateY(-2px) scale(1.01);
     }
-
-    /* 互動 Expander 展開面板微光框 */
     div.streamlit-expanderHeader {
         background-color: rgba(15, 23, 42, 0.8);
         border: 1px solid rgba(56, 189, 248, 0.2);
         border-radius: 0.5rem;
         color: #E2E8F0;
         font-weight: 600;
-        transition: all 0.3s ease;
-    }
-    
-    div.streamlit-expanderHeader:hover {
-        border-color: rgba(56, 189, 248, 0.5);
-        color: #38BDF8;
-        background-color: rgba(15, 23, 42, 0.95);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -206,6 +177,23 @@ total_capital = st.sidebar.number_input(
 
 st.sidebar.markdown("---")
 run_btn = st.sidebar.button("⚡ 啟動量子量化篩選與投組構建", type="primary", use_container_width=True)
+
+# 📡 實時 RSS 財經新聞抓取輔助函式
+@st.cache_data(ttl=1800) # 快取 30 分鐘避免頻繁請求
+def fetch_stock_rss_news(symbol_or_name):
+    try:
+        clean_query = str(symbol_or_name).split(".")[0].strip()
+        rss_url = f"https://news.google.com/rss/search?q={urllib.parse.quote(clean_query + ' stock')}&hl=en-US&gl=US&ceid=US:en"
+        feed = feedparser.parse(rss_url)
+        news_items = []
+        for entry in feed.entries[:3]: # 取前 3 條最新新聞
+            title = entry.get('title', 'No Title')
+            link = entry.get('link', '#')
+            published = entry.get('published', 'Recent')
+            news_items.append({"title": title, "link": link, "published": published})
+        return news_items
+    except Exception:
+        return []
 
 if run_btn:
     if not selected_stocks:
@@ -338,7 +326,7 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
             st.plotly_chart(fig_pie, use_container_width=True)
             
     with tab5:
-        st.markdown("### 🏆 依華爾街投資建議分類之深度技術與基本面解讀")
+        st.markdown("### 🏆 依華爾街投資建議分類之深度技術、基本面與實時 RSS 新聞解讀")
         rec_types = df_res['投資建議'].unique()
         for rec in rec_types:
             sub_df = df_res[df_res['投資建議'] == rec].head(10)
@@ -357,9 +345,19 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
                         * **建議倉位配置**: `{row['建議倉位比例']}` (約 `{row['建議配置金額 (€)']:,} €`)
                         * **📊 技術面分析 (威科夫結構與 ATR)**:  
                           > `{row['技術面分析 (威科夫/ATR)']}`
-                        * **📰 消息面與基本面解讀**:  
+                        * **📰 基本面與內部解讀**:  
                           > `{row['消息面與基本面解讀']}`
                         """)
+                        
+                        # 📡 嵌入實時 RSS 新聞抓取模組
+                        st.markdown("---")
+                        st.markdown("##### 📡 實時 RSS 財經新聞頭條 (Google News & Yahoo Finance)")
+                        rss_news = fetch_stock_rss_news(row['股票名稱'] if row['股票名稱'] else row['股票代碼'])
+                        if rss_news:
+                            for news in rss_news:
+                                st.markdown(f"- [{news['title']}]({news['link']}) `({news['published'][:16]})`")
+                        else:
+                            st.caption("⚠️ 目前暫無該標的之即時 RSS 財經新聞更新。")
                         
         st.markdown("---")
         st.markdown("### 🤖 Gemini AI 總結與投研報告")
