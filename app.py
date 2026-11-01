@@ -2,7 +2,7 @@
 """
 app.py
 ------
-QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策系統 (高科技賽博龐克極速版)
+QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策系統 (深度新聞要點與操盤點版)
 """
 
 import streamlit as st
@@ -205,7 +205,7 @@ def fetch_stock_rss_news(symbol_or_name):
         rss_url = f"https://news.google.com/rss/search?q={urllib.parse.quote(clean_query + ' stock')}&hl=en-US&gl=US&ceid=US:en"
         feed = feedparser.parse(rss_url)
         news_items = []
-        for entry in feed.entries[:2]:
+        for entry in feed.entries[:3]:
             title = entry.get('title', 'No Title')
             link = entry.get('link', '#')
             published = entry.get('published', 'Recent')
@@ -347,7 +347,7 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
             st.plotly_chart(fig_pie, use_container_width=True)
             
     with tab5:
-        st.markdown("### 🏆 依華爾街投資建議分類之深度技術、基本面與極速 AI 速報")
+        st.markdown("### 🏆 依華爾街投資建議分類之深度技術、基本面與關鍵操盤解讀")
         
         @st.cache_data(ttl=3600)
         def cached_ai_analysis(stock_name, symbol, tech_str, fundamental_str):
@@ -380,9 +380,9 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
                         """)
                         
                         st.markdown("---")
-                        st.markdown("##### ⚡ 華爾街 AI 極速速報 (即時 RSS + 核心操盤指引)")
+                        st.markdown("##### ⚡ 華爾街 AI 戰情情報 (新聞要點與關鍵操盤點)")
                         
-                        with st.spinner(f"正在同步 {row['股票名稱']} 實時情報中..."):
+                        with st.spinner(f"正在同步 {row['股票名稱']} 實時情報與操盤邏輯中..."):
                             ai_insight, rss_news = cached_ai_analysis(
                                 stock_name=row['股票名稱'],
                                 symbol=row['股票代碼'],
