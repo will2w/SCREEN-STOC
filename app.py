@@ -2,236 +2,153 @@
 """
 app.py
 ------
-現代多維度量化股票篩選與決策系統 (完整版：內建流暢進度回饋與全景評估介面)
+現代多維度量化股票篩選與決策引擎 (Streamlit 互動介面)
 """
 
+import os
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import time
 from screener_engine import QuantScreenerEngine
 
+# 頁面基本設定
 st.set_page_config(
-    page_title="多維度智能股票篩選與量化交易系統",
+    page_title="Global Quantitative Screening & Portfolio Engine",
     page_icon="📈",
     layout="wide"
 )
 
-st.title("🚀 現代多維度量化股票篩選與決策系統")
-st.markdown("*基於《核心股票分析技巧指南》：結合 2026 實時市場狀態同步、Portfolio Top 15 核心投組與量化體質評估模組。*")
+# 載入自定義 CSS 樣式
+st.markdown("""
+<style>
+    .main-header {
+        font-size: 2.2rem;
+        color: #1E3A8A;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+    .sub-header {
+        font-size: 1.1rem;
+        color: #4B5563;
+        margin-bottom: 1.5rem;
+    }
+    .metric-card {
+        background-color: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        text-align: center;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-engine = QuantScreenerEngine()
-watchlist = engine.watchlist
+def main():
+    st.markdown('<div class="main-header">🌍 全球多市場量化選股與動態資產配置引擎</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">整合多維度量化評分 (Piotroski F, Altman Z, Sharpe, IC) 與威科夫微觀結構的專業投研系統</div>', unsafe_allow_html=True)
 
-market_state = engine.get_current_market_state()
-default_impulse = market_state["credit_impulse"]
-default_m2 = market_state["m2_gap"]
+    # 初始化引擎
+    watchlist_file = "Watchlist_Stocks.xlsx"
+    if not os.path.exists(watchlist_file) and os.path.exists("Watchlist_Stocks.csv"):
+        watchlist_file = "Watchlist_Stocks.csv"
+        
+    engine = QuantScreenerEngine(watchlist_path=watchlist_file)
 
-st.sidebar.header("🎛️ 策略參數與過濾面板")
-st.sidebar.info(f"🌐 實時宏觀同步 ({market_state['sync_date']}): 10年美債 {market_state['benchmark_tnx']}%")
+    # 側邊欄控制面板
+    st.sidebar.header("⚙️ 投研參數與宏觀設定")
+    
+    # 取得自動偵測的宏觀狀態
+    market_state = engine.get_current_market_state()
+    
+    st.sidebar.subheader("📊 宏觀信貸脈衝偵測")
+    credit_status = st.sidebar.selectbox(
+        "信貸脈衝週期狀態",
+        ["擴張期 (Expansion - 流動性充沛)", "中性期 (Neutral)", "收縮期 (Contraction - 防禦為主)"],
+        index=0 if "Expansion" in market_state["credit_impulse"] else 1
+    )
+    
+    m2_gap = st.sidebar.slider(
+        "超額 M2 剪刀差 (%)",
+        min_value=-2.0, max_value=5.0,
+        value=float(market_state["m2_gap"]), step=0.1
+    )
+    
+    capital = st.sidebar.number_input(
+        "總投資資本 (€)",
+        min_value=10000, max_value=10000000,
+        value=100000, step=10000
+    )
+    
+    method = st.sidebar.selectbox(
+        "動態倉位配置模型",
+        ["Quarter Kelly (凱利公式修正版)", "Risk Parity (風險平價)", "Equal Weight (等權重)"]
+    )
 
-impulse_options = [
-    "擴張期 (Expansion - 流動性充沛)", 
-    "中性期 (Neutral)", 
-    "收縮期 (Contraction - 防禦為主)"
-]
-default_impulse_idx = impulse_options.index(default_impulse) if default_impulse in impulse_options else 0
-
-credit_impulse = st.sidebar.selectbox(
-    "1. 信貸脈衝狀態 (Credit Impulse)", 
-    impulse_options, 
-    index=default_impulse_idx
-)
-
-m2_gap = st.sidebar.slider(
-    "2. 超額 M2 剪刀差 (ΔM2 - ΔGDP %)", 
-    -2.0, 6.0, float(default_m2), 0.1
-)
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("#### 股票池選取模式")
-selection_mode = st.sidebar.radio(
-    "選擇模式", 
-    ["評估 Excel 中的全部股票 (210檔)", "自選特定標的池"], 
-    index=0, 
-    label_visibility="collapsed"
-)
-
-if selection_mode == "評估 Excel 中的全部股票 (210檔)":
-    selected_stocks = watchlist
-    st.sidebar.success(f"✅ 已自動載入 Excel 中的全部 {len(watchlist)} 檔股票進行全景評估與篩選。")
-else:
-    selected_stocks = st.sidebar.multiselect("選取目標標的池", watchlist, default=watchlist[:15] if len(watchlist)>=15 else watchlist)
-
-st.sidebar.markdown("---")
-kelly_mode = st.sidebar.selectbox(
-    "3. 資金控管與頭寸模型", 
-    ["四分之一凱利 (0.25 f* - 機構推薦)", "半凱利 (0.5 f*)", "ATR 波動率目標化 (ATR Sizing)"], 
-    index=0
-)
-
-total_capital = st.sidebar.number_input(
-    "總投資資本 (€ / $)", 
-    value=100000, 
-    step=10000
-)
-
-st.sidebar.markdown("---")
-run_btn = st.sidebar.button("執行全景量化篩選與指標評估", type="primary", use_container_width=True)
-
-if run_btn:
-    if not selected_stocks:
-        st.warning("請至少選取或載入一檔股票。")
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📋 監控標的清單預覽")
+    if engine.watchlist:
+        st.sidebar.info(f"目前共載入 **{len(engine.watchlist)}** 檔監控標的")
+        with st.sidebar.expander("檢視標的清單"):
+            for s in engine.watchlist:
+                st.text(f"• {s}")
     else:
-        # 🚀 整合流暢的視覺化進度條與狀態提示
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        status_text.text("🔄 步驟 1/3: 初始化模擬真人 Session 與宏觀市場狀態...")
-        progress_bar.progress(20)
-        time.sleep(0.3)
-        
-        status_text.text("📊 步驟 2/3: 透過 Chart API 高效通道抓取歷史行情與多維度量化計算...")
-        progress_bar.progress(55)
-        
-        # 執行量化引擎計算
-        df_res, df_unqualified = engine.run_screening_with_unqualified(
-            selected_stocks, 
-            capital=total_capital, 
-            credit_impulse_status=credit_impulse, 
-            m2_gap=m2_gap, 
-            method=kelly_mode
-        )
-        
-        status_text.text("✨ 步驟 3/3: 計算 Sharpe、IC 分數與 100% 歸一化動態頭寸配置...")
-        progress_bar.progress(90)
-        time.sleep(0.3)
-        
-        if df_res.empty and df_unqualified.empty:
-            progress_bar.empty()
-            status_text.empty()
-            st.error("篩選結果為空，請檢查網絡連線或標的流動性狀態。")
-        else:
-            st.session_state['df_res'] = df_res
-            st.session_state['df_unqualified'] = df_unqualified
-            st.session_state['credit_impulse'] = credit_impulse
-            st.session_state['m2_gap'] = m2_gap
-            
-            progress_bar.progress(100)
-            status_text.text("✅ 全景量化篩選與 Portfolio Top 15 投組建構完成！")
-            time.sleep(0.5)
-            
-            progress_bar.empty()
-            status_text.empty()
-            st.rerun()
+        st.sidebar.warning("⚠️ 尚未載入任何標的，請確認外部檔案。")
 
-# 主畫面展示 (若已執行評估)
-if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
-    df_res = st.session_state['df_res']
-    df_unqualified = st.session_state['df_unqualified']
-    
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("宏觀信貸脈衝 (實時)", st.session_state['credit_impulse'].split()[0], f"美債 {market_state['benchmark_tnx']}%")
-    col2.metric("超額 M2 剪刀差", f"+{st.session_state['m2_gap']}%", "動態估值驅動")
-    col3.metric("評估合格標的", f"{len(df_res)} 檔", "多因子量化評分通過")
-    col4.metric("未通過 / 遭剔除", f"{len(df_unqualified)} 檔", "流動性或體質未達標")
-    
-    # 5 個 Tab 專頁佈局
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📊 合格全景量化清單",
-        "⚠️ 未通過檢驗 / 遭剔除清單",
-        "🎯 Portfolio Top 15 核心投組", 
-        "💰 投資建議與倉位配置總覽", 
-        "🏆 分項技術分析與 AI 總結"
-    ])
-    
-    with tab1:
-        st.markdown("## 📊 通過多維度量化檢驗之合格股票池")
-        st.markdown("*本頁面展示所有成功通過流動性、財務體質與動能檢驗的合格標的。*")
-        excel_view_df = df_res.drop(columns=['raw_price', '貨幣', '建議倉位比例', '建議配置金額 (€)', '不合格原因'], errors='ignore')
-        st.dataframe(excel_view_df, use_container_width=True, height=600)
+    # 主畫面按鈕
+    col_btn1, col_btn2 = st.columns([1, 4])
+    with col_btn1:
+        run_btn = st.button("🚀 執行量化篩選與投組配置", type="primary", use_container_width=True)
+
+    if run_btn or 'has_run' in st.session_state:
+        st.session_state['has_run'] = True
         
-    with tab2:
-        st.markdown("## ⚠️ 未通過檢驗 / 遭剔除之標的清單與原因")
-        st.markdown("*本頁面獨立展示因日均成交量過低、股價過低或數據異常而被系統過濾並剔除的標的，並詳細列出不合格原因。*")
-        if df_unqualified.empty:
-            st.info("🎉 太棒了！目前選取的股票池中沒有被剔除的不合格標的。")
-        else:
-            unqualified_display = df_unqualified.drop(columns=['raw_price', '貨幣', '建議倉位比例', '建議配置金額 (€)'], errors='ignore')
-            st.dataframe(unqualified_display, use_container_width=True, height=550)
-        
-    with tab3:
-        st.markdown("## 🎯 Portfolio Top 15 核心投組推薦")
-        top15_df = df_res.head(15).reset_index(drop=True)
-        top15_display = top15_df.drop(columns=['raw_price', '貨幣', '不合格原因'], errors='ignore')
-        
-        col_t1, col_t2 = st.columns([3, 1])
-        with col_t2:
-            # 🛡️ 防禦性檢查：確認欄位存在再計算總金額，防止 KeyError
-            total_top15_amt = top15_df['建議配置金額 (€)'].sum() if '建議配置金額 (€)' in top15_df.columns else 0.0
-            st.metric("Top 15 總配置金額", f"€ {total_top15_amt:,.2f}", f"佔總資本 {round(total_top15_amt/total_capital*100, 1)}%")
-            
-        st.dataframe(top15_display, use_container_width=True, height=550)
-        
-        if not top15_df.empty and '建議配置金額 (€)' in top15_df.columns:
-            fig_top15 = px.bar(
-                top15_df, 
-                x='股票名稱', 
-                y='建議配置金額 (€)', 
-                color='綜合評分',
-                title='Portfolio Top 15 核心標的之最佳資本配置與綜合評分分佈',
-                labels={'建議配置金額 (€)': '配置金額 (€)', '綜合評分': '綜合評分 (分)'}
+        with st.spinner("🔄 正在透過雙軌通道抓取全球即時行情、計算量化指標與威科夫結構中..."):
+            passed_df, failed_df = engine.run_screening_with_unqualified(
+                selected_stocks=engine.watchlist,
+                capital=capital,
+                credit_impulse_status=credit_status,
+                m2_gap=m2_gap,
+                method=method
             )
-            st.plotly_chart(fig_top15, use_container_width=True)
-        
-    with tab4:
-        st.markdown("### 💰 投資建議與動態資金配置總覽")
-        rec_summary = df_res.groupby('投資建議').agg(
-            標的數量=('股票名稱', 'count'),
-            平均綜合評分=('綜合評分', 'mean'),
-            總配置金額=('建議配置金額 (€)', 'sum')
-        ).reset_index()
-        rec_summary['平均綜合評分'] = rec_summary['平均綜合評分'].round(1)
-        
-        col_s1, col_s2 = st.columns([2, 1])
-        with col_s1:
-            st.dataframe(rec_summary, use_container_width=True)
-        with col_s2:
-            fig_pie = px.pie(rec_summary, names='投資建議', values='總配置金額', title='各投資建議類別之資本配置佔比')
-            st.plotly_chart(fig_pie, use_container_width=True)
-            
-    with tab5:
-        st.markdown("### 🏆 依投資建議分類之深度技術分析與 AI 總結")
-        rec_types = df_res['投資建議'].unique()
-        for rec in rec_types:
-            sub_df = df_res[df_res['投資建議'] == rec].head(10)
-            if not sub_df.empty:
-                st.markdown(f"#### 🔥 【{rec}】精選標的 (共 {len(sub_df)} 檔)")
-                for idx, row in sub_df.iterrows():
-                    with st.expander(f"📌 {row['股票名稱']} ({row['股票代碼']}) — 現價: {row['最新現價']} | 綜合評分: {row['綜合評分']}分 | Sharpe: {row['Sharpe Ratio']} | F-Score: {row['Piotroski F']}"):
-                        ca, cb, cc, cd = st.columns(4)
-                        ca.metric("評估結果", row['評估結果'])
-                        cb.metric("威科夫微觀結構", row['威科夫微觀結構'])
-                        cc.metric("Altman Z", row['Altman Z'])
-                        cd.metric("ATR 停損位", row['ATR 停損位'])
-                        
-                        st.markdown(f"""
-                        * **量化 IC 預測評分**: `{row['量化預測 IC']}` | **夏普比率**: `{row['Sharpe Ratio']}`
-                        * **財務體質 (Piotroski F-Score)**: `{row['Piotroski F']}` (衡量獲利、營運效率與財務結構)
-                        * **建議倉位配置**: `{row['建議倉位比例']}` (約 `{row['建議配置金額 (€)']:,} €`)
-                        * **技術與量價診斷**: 
-                          該標的經量化引擎綜合評估：IC 預測動能為 `{row['量化預測 IC']}`，夏普比率達 `{row['Sharpe Ratio']}`，Piotroski F-Score 財務體質為 `{row['Piotroski F']}`，Altman Z 破產預警分數為 `{row['Altman Z']}`。目前處於 `{row['威科夫微觀結構']}`。多維度指標顯示其財務穩健且主力吸籌特徵明顯，建議嚴格執行 ATR 停損位 `{row['ATR 停損位']}`。
-                        """)
-                        
+
         st.markdown("---")
-        st.markdown("### 🤖 Gemini AI 總結與投研報告")
-        if st.button("✨ 生成 Gemini AI 綜合評分總結報告", type="primary"):
-            with st.spinner("正在調用 Gemini AI 進行全方位指標與總結解讀..."):
-                ai_report = engine.analyze_with_gemini(
-                    df_res, 
-                    st.session_state['credit_impulse'],
-                    st.session_state['m2_gap']
-                )
+        st.subheader("🎯 Portfolio Top 核心配置清單 (通過量化篩選)")
+        
+        if not passed_df.empty:
+            # 調整欄位顯示順序
+            display_cols = [
+                "股票名稱", "股票代碼", "最新現價", "綜合評分", 
+                "投資建議", "建議倉位比例", "建議配置金額 (€)", 
+                "Sharpe Ratio", "Piotroski F", "Altman Z", 
+                "技術面分析 (威科夫/ATR)", "消息面與基本面解讀", "ATR 停損位"
+            ]
+            valid_cols = [c for c in display_cols if c in passed_df.columns]
+            
+            st.dataframe(
+                passed_df[valid_cols],
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.warning("⚠️ 目前沒有任何標的通過嚴格的量化與流動性篩選標準。")
+
+        # 失敗或不合格標的清單
+        with st.expander("📌 未通過篩選標的與剔除原因（點擊展開）"):
+            if not failed_df.empty:
+                fail_cols = ["股票名稱", "股票代碼", "最新現價", "不合格原因"]
+                valid_fail_cols = [c for c in fail_cols if c in failed_df.columns]
+                st.dataframe(failed_df[valid_fail_cols], use_container_width=True, hide_index=True)
+            else:
+                st.success("🎉 太棒了！所有標的均通過篩選。")
+
+        # AI 深度投研診斷報告
+        st.markdown("---")
+        st.subheader("🤖 華爾街級別 AI 量化投研與總經深度診斷報告")
+        if st.button("✨ 生成 AI 深度解析報告", use_container_width=False):
+            with st.spinner("💡 正在結合宏觀信貸脈衝與投組結構生成專業報告中..."):
+                ai_report = engine.analyze_with_gemini(passed_df, credit_status, m2_gap)
                 st.markdown(ai_report)
-else:
-    st.info("👈 請在左側側邊欄點擊「執行全景量化篩選與指標評估」按鈕，產出包含合格清單、未通過檢驗清單與 Portfolio Top 15 核心投組的完整專業系統。")
+
+    else:
+        st.info("👈 請在左側設定投研參數，並點擊上方「執行量化篩選與投組配置」按鈕開始分析。")
+
+if __name__ == "__main__":
+    main()
