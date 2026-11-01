@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策引擎 (高效深度新聞與操盤點版)
+QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策引擎 (強化版：深度新聞拆解與精準操盤點)
 """
 
 import os
@@ -481,25 +481,28 @@ class QuantScreenerEngine:
 - 最新抓取的 RSS 財經新聞：
 {news_summary_text}
 
-請嚴格按照以下三個模組輸出（保持精煉但資訊飽和）：
-1. **📰 實時新聞核心要點**：
-   - 提取並總結近期最關鍵的一至兩則新聞核心事件，說明其對市場情緒與基本面的實質影響。
+請嚴格按照以下三個模組輸出（請特別加強第 1 點與第 3 點的細節分析）：
+1. **📰 消息面快訊與事件驅動深度解析**：
+   - 詳細拆解近期 RSS 財經新聞中的關鍵事件（例如：新平台推出、產品獲批、財報突破或戰略合作）。
+   - 分析該事件對公司基本面、營收潛力與市場情緒（Sentiment）的實質催化效果與延續性。
 2. **📊 多維度基本與技術面解讀**：
-   - 結合威科夫結構（如吸籌/派發）與基本面體質，評估當前多空力量對比。
-3. **🎯 關鍵操盤點與風控指引**：
-   - 明確給出短線/中線的**關鍵觀察價位、防守支撐點（如 ATR 停損邏輯）與進場/減碼時機**。
+   - 結合威科夫結構（如吸籌/派發）與基本面體質（如 Piotroski F-Score），評估當前多空力量對比與機構資金進駐意願。
+3. **🎯 關鍵操盤點與風控指引（詳細佈局策略）**：
+   - **進場策略**：給出具體的理想建倉價位區間（例如：突破回踩支撐或右側追價條件）。
+   - **防守支撐點**：結合 ATR 波動率與威科夫 Spring 洗盤低點，給出明確的嚴格停損/防守價位。
+   - **目標價與獲利了結**：基於風險報酬比（Risk/Reward Ratio），預估短中線的階段性目標價與分批停利規劃。
 """
         models = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
         headers = {"Content-Type": "application/json"}
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"maxOutputTokens": 600, "temperature": 0.3}
+            "generationConfig": {"maxOutputTokens": 800, "temperature": 0.3}
         }
 
         for model in models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
             try:
-                response = Session().post(url, headers=headers, json=payload, timeout=20)
+                response = Session().post(url, headers=headers, json=payload, timeout=25)
                 if response.status_code == 200:
                     res_json = response.json()
                     if "candidates" in res_json and len(res_json["candidates"]) > 0:
