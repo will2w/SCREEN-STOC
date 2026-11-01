@@ -2,7 +2,7 @@
 """
 app.py
 ------
-現代多維度量化股票篩選與決策系統 (未來科技/賽博龐克風升級版)
+QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策系統 (動態網格與未來感交互升級版)
 """
 
 import streamlit as st
@@ -12,105 +12,135 @@ import time
 from screener_engine import QuantScreenerEngine
 
 st.set_page_config(
-    page_title="QUANTUM TERMINAL — 智能量化交易與決策系統",
+    page_title="QUANTUM ALPHA TERMINAL — 智能量化交易系統",
     page_icon="⚡",
     layout="wide"
 )
 
-# ⚡ 注入未來科技/賽博龐克風格 CSS 樣式
+# ⚡ 注入賽博龐克動態網格、發光粒子與流光玻璃擬態樣式
 st.markdown("""
 <style>
-    /* 全局背景與字型優化 */
+    /* 全局賽博龐克暗色主題與動態網格背景 */
     .stApp {
-        background-color: #0B0F19;
+        background-color: #050814;
+        background-image: 
+            radial-gradient(circle at 50% 0%, rgba(14, 165, 233, 0.12) 0%, transparent 50%),
+            linear-gradient(rgba(14, 165, 233, 0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(14, 165, 233, 0.03) 1px, transparent 1px);
+        background-size: 100% 100%, 40px 40px, 40px 40px;
         color: #E2E8F0;
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     
-    /* 頂部標題未來感霓虹光暈 */
+    /* 頂部標題未來感雷射漸層與發光特效 */
     .tech-header {
-        font-size: 2.5rem;
-        font-weight: 800;
-        background: linear-gradient(135deg, #38BDF8 0%, #818CF8 50%, #C084FC 100%);
+        font-size: 2.8rem;
+        font-weight: 900;
+        background: linear-gradient(135deg, #38BDF8 0%, #818CF8 40%, #C084FC 80%, #F472B6 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        text-shadow: 0 0 30px rgba(56, 189, 248, 0.3);
+        text-shadow: 0 0 40px rgba(56, 189, 248, 0.4);
         margin-bottom: 0.2rem;
         letter-spacing: -0.025em;
     }
     
     .tech-sub {
-        font-size: 1.05rem;
+        font-size: 1.1rem;
         color: #94A3B8;
         font-weight: 400;
         margin-bottom: 2rem;
         border-left: 3px solid #38BDF8;
         padding-left: 0.75rem;
+        background: linear-gradient(90deg, rgba(56, 189, 248, 0.1) 0%, transparent 100%);
+        padding-top: 0.2rem;
+        padding-bottom: 0.2rem;
     }
 
-    /* 側邊欄科技面板化 */
+    /* 側邊欄高科技半透明面板化 */
     [data-testid="stSidebar"] {
-        background-color: #0F172A;
-        border-right: 1px solid #1E293B;
+        background-color: rgba(11, 15, 25, 0.85);
+        backdrop-filter: blur(12px);
+        border-right: 1px solid rgba(56, 189, 248, 0.2);
     }
 
-    /* 卡片與數據框微光邊框 */
+    /* 玻璃擬態數據框與動態微光懸停 */
     div.stDataFrame {
-        border: 1px solid #1E293B;
+        border: 1px solid rgba(56, 189, 248, 0.25);
         border-radius: 0.75rem;
-        background-color: #0F172A;
+        background-color: rgba(15, 23, 42, 0.75);
+        backdrop-filter: blur(10px);
         padding: 0.5rem;
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 15px rgba(56, 189, 248, 0.05);
+        box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.7), 0 0 20px rgba(56, 189, 248, 0.08);
+        transition: all 0.3s ease;
     }
     
-    /* 標籤頁 (Tabs) 科技化改造 */
+    div.stDataFrame:hover {
+        border-color: rgba(56, 189, 248, 0.5);
+        box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.8), 0 0 25px rgba(56, 189, 248, 0.15);
+    }
+    
+    /* 標籤頁 (Tabs) 未來科技感改造 */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background-color: #0F172A;
-        padding: 6px;
+        gap: 10px;
+        background-color: rgba(15, 23, 42, 0.9);
+        padding: 8px;
         border-radius: 0.75rem;
-        border: 1px solid #1E293B;
+        border: 1px solid rgba(56, 189, 248, 0.2);
+        backdrop-filter: blur(8px);
     }
     
     .stTabs [data-baseweb="tab"] {
-        height: 40px;
+        height: 42px;
         background-color: transparent;
         border-radius: 6px;
         color: #94A3B8;
         font-weight: 600;
         border: none;
+        transition: all 0.3s ease;
+    }
+    
+    .stTabs [data-baseweb="tab"]:hover {
+        color: #38BDF8;
+        background-color: rgba(56, 189, 248, 0.08);
     }
     
     .stTabs [aria-selected="true"] {
         background: linear-gradient(135deg, #0284C7 0%, #4338CA 100%);
         color: #FFFFFF !important;
-        box-shadow: 0 0 15px rgba(2, 132, 199, 0.5);
+        box-shadow: 0 0 20px rgba(2, 132, 199, 0.6);
     }
 
-    /* 按鈕霓虹光感 */
+    /* 按鈕雷射發光感與點擊回饋 */
     .stButton button[kind="primary"] {
-        background: linear-gradient(135deg, #0284C7 0%, #6366F1 100%);
-        border: none;
+        background: linear-gradient(135deg, #0284C7 0%, #6366F1 50%, #9333EA 100%);
+        border: 1px solid rgba(255, 255, 255, 0.2);
         color: white;
         font-weight: 700;
         border-radius: 0.5rem;
-        box-shadow: 0 0 20px rgba(56, 189, 248, 0.4);
-        transition: all 0.3s ease;
+        box-shadow: 0 0 25px rgba(56, 189, 248, 0.4);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
     
     .stButton button[kind="primary"]:hover {
-        background: linear-gradient(135deg, #0369A1 0%, #4F46E5 100%);
-        box-shadow: 0 0 30px rgba(56, 189, 248, 0.7);
-        transform: translateY(-1px);
+        background: linear-gradient(135deg, #0369A1 0%, #4F46E5 50%, #7E22CE 100%);
+        box-shadow: 0 0 35px rgba(147, 51, 234, 0.7);
+        transform: translateY(-2px) scale(1.01);
     }
 
-    /* Expander 展開面板優化 */
+    /* 互動 Expander 展開面板微光框 */
     div.streamlit-expanderHeader {
-        background-color: #0F172A;
-        border: 1px solid #1E293B;
+        background-color: rgba(15, 23, 42, 0.8);
+        border: 1px solid rgba(56, 189, 248, 0.2);
         border-radius: 0.5rem;
         color: #E2E8F0;
         font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    div.streamlit-expanderHeader:hover {
+        border-color: rgba(56, 189, 248, 0.5);
+        color: #38BDF8;
+        background-color: rgba(15, 23, 42, 0.95);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -184,11 +214,11 @@ if run_btn:
         progress_bar = st.progress(0)
         status_text = st.empty()
         
-        status_text.text("⚡ 正在建立安全連線、同步全球宏觀與實時流動性狀態...")
+        status_text.text("⚡ [01/03] 建立量子安全連線、同步全球宏觀與實時流動性狀態...")
         progress_bar.progress(25)
         time.sleep(0.3)
         
-        status_text.text("🚀 執行多維度量化引擎、威科夫微觀結構與華爾街評分運算...")
+        status_text.text("🚀 [02/03] 執行多維度量化引擎、威科夫微觀結構與華爾街評分運算...")
         progress_bar.progress(60)
         
         df_res, df_unqualified = engine.run_screening_with_unqualified(
@@ -199,7 +229,7 @@ if run_btn:
             method=kelly_mode
         )
         
-        status_text.text("💎 計算 Sharpe、IC 分數與 100% 歸一化動態頭寸配置...")
+        status_text.text("💎 [03/03] 計算 Sharpe、IC 分數與 100% 歸一化動態頭寸配置...")
         progress_bar.progress(90)
         time.sleep(0.3)
         
