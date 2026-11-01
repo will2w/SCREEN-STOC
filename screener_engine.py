@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-現代多維度量化股票篩選與決策引擎 (華爾街投研級別建議與多維分析完整版)
+QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策引擎 (華爾街投研專業升級版)
 """
 
 import os
@@ -347,7 +347,6 @@ class QuantScreenerEngine:
                     "狀態": "不合格 (流動性不足)"
                 }
 
-            # 華爾街級別投資建議劃分
             if comp_score >= 82:
                 eval_result, investment_rec = "極優 (Alpha 顯著)", "強力買進 (Strong Buy)"
                 tech_analysis = "威科夫 Phase C (Spring 彈簧洗盤確認) - 主力吸籌完成，量價齊揚，突破關鍵壓力和均線多頭排列。"
@@ -385,7 +384,7 @@ class QuantScreenerEngine:
                 "股票名稱": stock, "股票代碼": symbol, "最新現價": "N/A", "raw_price": -1.0,
                 "貨幣": "USD", "綜合評分": 0.0, "評估結果": "不合格", "投資建議": "暫時剔除 (Exclude)",
                 "不合格原因": f"例外錯誤 ({str(e)})", "量化預測 IC": 0.0, "Sharpe Ratio": 0.0,
-                "Piotroski F": "5/9", "Altman Z": 2.5, 
+                "Piotroski F": "5/9", "Altman Z": z_score if 'z_score' in locals() else 2.5, 
                 "技術面分析 (威科夫/ATR)": "計算例外", "消息面與基本面解讀": "系統內部錯誤",
                 "建議倉位比例": "0%", "建議配置金額 (€)": 0.0, "ATR 停損位": "N/A", "狀態": "不合格 (例外錯誤)"
             }
@@ -461,7 +460,7 @@ class QuantScreenerEngine:
         for model in models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
             try:
-                response = requests.post(url, headers=headers, json=payload, timeout=60)
+                response = Session().post(url, headers=headers, json=payload, timeout=60)
                 if response.status_code == 200:
                     res_json = response.json()
                     if "candidates" in res_json and len(res_json["candidates"]) > 0:
@@ -469,3 +468,42 @@ class QuantScreenerEngine:
             except Exception:
                 continue
         return "❌ Gemini AI 分析生成失敗，請稍後再試。"
+
+    def analyze_stock_with_ai_and_rss(self, stock_name, symbol, rss_news_list, tech_str, fundamental_str):
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            return "⚠️ 未檢測到 GEMINI_API_KEY，無法生成 AI 動態投研報告。"
+
+        news_summary_text = "\n".join([f"- {n['title']} ({n['published']})" for n in rss_news_list]) if rss_news_list else "暫無近期即時財經新聞。"
+
+        prompt = f"""
+作為華爾街量化投研與資深總經分析師，請針對以下標的進行動態基本面與消息面解讀：
+- 股票名稱：{stock_name} ({symbol})
+- 系統內部技術面與威科夫結構：{tech_str}
+- 系統內部基本面與財務解讀：{fundamental_str}
+- 實時抓取的最新 RSS 財經新聞標題：
+{news_summary_text}
+
+請產出一份結構清晰、專業且前瞻的投研報告（使用繁體中文）：
+1. **即時新聞與消息面解讀**：綜合上述最新新聞，分析近期市場動態對該公司的實質影響。
+2. **基本面與體質總結**：結合財務結構與機構動向給出評價。
+3. **未來趨勢與風險預測**：給出未來 1-3 個月的關鍵觀察價位、潛在利多或風險提示。
+"""
+        models = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"maxOutputTokens": 2048, "temperature": 0.3}
+        }
+
+        for model in models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            try:
+                response = Session().post(url, headers=headers, json=payload, timeout=30)
+                if response.status_code == 200:
+                    res_json = response.json()
+                    if "candidates" in res_json and len(res_json["candidates"]) > 0:
+                        return res_json['candidates'][0]['content']['parts'][0]['text']
+            except Exception:
+                continue
+        return "❌ AI 實時解讀生成失敗，請稍後再試。"
