@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策引擎 (強化版：深度新聞拆解與精準操盤點)
+QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策引擎 (專業詳盡分析與高效率版)
 """
 
 import os
@@ -474,29 +474,30 @@ class QuantScreenerEngine:
         news_summary_text = "\n".join([f"- {n['title']}" for n in rss_news_list[:3]]) if rss_news_list else "暫無近期即時新聞。"
 
         prompt = f"""
-請以華爾街量化資深操盤手視角，用繁體中文對以下標的進行深度、結構化的情報總結與操盤指引：
+請以華爾街量化資深操盤手視角，用繁體中文對以下標的進行**深度、段落分明的詳盡情報拆解與操盤指引**（絕對禁止單句帶過，必須給出完整的分析邏輯）：
 - 標的：{stock_name} ({symbol})
 - 系統內部技術面與威科夫結構：{tech_str}
 - 系統內部基本面與財務解讀：{fundamental_str}
 - 最新抓取的 RSS 財經新聞：
 {news_summary_text}
 
-請嚴格按照以下三個模組輸出（請特別加強第 1 點與第 3 點的細節分析）：
+請嚴格按照以下三個模組輸出豐富的詳細內容：
 1. **📰 消息面快訊與事件驅動深度解析**：
-   - 詳細拆解近期 RSS 財經新聞中的關鍵事件（例如：新平台推出、產品獲批、財報突破或戰略合作）。
-   - 分析該事件對公司基本面、營收潛力與市場情緒（Sentiment）的實質催化效果與延續性。
+   - 詳盡解讀近期 RSS 財經新聞中的關鍵事件背景、市場資金的真實反應（如大盤相對強弱、法人資金流向）。
+   - 分析該新聞事件對公司短期市場情緒（Sentiment）與中長期基本面預期的實質催化效果與潛在後續效應。
 2. **📊 多維度基本與技術面解讀**：
-   - 結合威科夫結構（如吸籌/派發）與基本面體質（如 Piotroski F-Score），評估當前多空力量對比與機構資金進駐意願。
+   - 深度結合 Piotroski F-Score 的財務體質細節與 Altman Z 破產預警，評估其企業護城河。
+   - 解析威科夫微觀結構（如吸籌區間、Spring 洗盤或量價配合狀況），明確指出當前主力資金是處於建倉、拉抬還是洗盤階段。
 3. **🎯 關鍵操盤點與風控指引（詳細佈局策略）**：
-   - **進場策略**：給出具體的理想建倉價位區間（例如：突破回踩支撐或右側追價條件）。
-   - **防守支撐點**：結合 ATR 波動率與威科夫 Spring 洗盤低點，給出明確的嚴格停損/防守價位。
-   - **目標價與獲利了結**：基於風險報酬比（Risk/Reward Ratio），預估短中線的階段性目標價與分批停利規劃。
+   - **進場策略**：給出具體的理想建倉價位區間或右側突破確認條件，避免盲目追高。
+   - **防守支撐點**：結合 ATR 波動率數值與威科夫關鍵防守價位（如 Spring 彈簧低點），規劃嚴格的停損點。
+   - **獲利目標與階段規劃**：基於風險報酬比（Risk/Reward Ratio），預估短中線的第一與第二階段目標價，以及分批停利的執行邏輯。
 """
         models = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
         headers = {"Content-Type": "application/json"}
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"maxOutputTokens": 800, "temperature": 0.3}
+            "generationConfig": {"maxOutputTokens": 950, "temperature": 0.3}
         }
 
         for model in models:
