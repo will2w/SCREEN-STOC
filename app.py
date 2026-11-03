@@ -2,7 +2,7 @@
 """
 app.py
 ------
-QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策系統 (支援自定義上傳與手動輸入)
+QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策系統 (含短線/長線雙軌戰情室)
 """
 
 import streamlit as st
@@ -19,7 +19,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# ⚡ 注入極致賽博龐克、霓虹發光與戰情室風格 CSS
 st.markdown("""
 <style>
     .stApp {
@@ -187,7 +186,6 @@ if watchlist_source == "上傳自定義檔案 (Excel/CSV)":
             else:
                 df_upload = pd.read_excel(uploaded_file)
             
-            # 自動抓取第一欄或名稱欄作為股票池
             target_col = None
             for col in df_upload.columns:
                 if any(k in str(col).lower() for k in ["name", "symbol", "ticker", "名稱", "代碼"]):
@@ -208,7 +206,6 @@ elif watchlist_source == "手動輸入股票代碼":
         height=100
     )
     if manual_input:
-        # 支援用逗號、分號或換行符分隔
         raw_items = manual_input.replace(";", ",").replace("\n", ",").split(",")
         active_watchlist = [item.strip() for item in raw_items if item.strip()]
         st.sidebar.success(f"✅ 已解析手動輸入的 {len(active_watchlist)} 檔標的。")
@@ -312,10 +309,11 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
     col3.metric("評估合格標的", f"{len(df_res)} 檔", "多因子量化評分通過")
     col4.metric("未通過 / 遭剔除", f"{len(df_unqualified)} 檔", "流動性或體質未達標")
     
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📊 合格全景量化清單",
         "⚠️ 未通過檢驗 / 遭剔除清單",
         "🎯 Portfolio Top 15 核心投組", 
+        "⚡ TOP 10 短線與中長線雙軌戰情室",
         "💰 投資建議與倉位配置總覽", 
         "🏆 專業投研技術與基本面解讀"
     ])
@@ -361,8 +359,28 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
                 title_font_color='#22D3EE'
             )
             st.plotly_chart(fig_top15, use_container_width=True)
-        
+
     with tab4:
+        st.markdown("### ⚡ TOP 10 短線動能操作 vs TOP 10 中長線價值佈局雙軌戰情室")
+        st.markdown("本模組基於實時量化指標與價格動態，為您精準拆解短線波段要素（買入價、停利價、ATR停損、倉位）與中長線護城河要素（佈局價、目標價、財務安全分、倉位），並附帶精煉推薦原因。")
+        
+        df_short_top10, df_long_top10 = engine.get_dual_track_top10(df_res, capital=total_capital)
+        
+        st.markdown("---")
+        st.markdown("#### 🚀 TOP 10 短線動能操作精選標的")
+        if df_short_top10.empty:
+            st.info("目前合格股票池數量不足 10 檔，請擴大股票池。")
+        else:
+            st.dataframe(df_short_top10, use_container_width=True, height=420)
+            
+        st.markdown("---")
+        st.markdown("#### 🏛️ TOP 10 中長線價值佈局精選標的")
+        if df_long_top10.empty:
+            st.info("目前合格股票池數量不足 10 檔，請擴大股票池。")
+        else:
+            st.dataframe(df_long_top10, use_container_width=True, height=420)
+        
+    with tab5:
         st.markdown("### 💰 投資建議與動態資金配置總覽")
         rec_summary = df_res.groupby('投資建議').agg(
             標的數量=('股票名稱', 'count'),
@@ -390,7 +408,7 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
             )
             st.plotly_chart(fig_pie, use_container_width=True)
             
-    with tab5:
+    with tab6:
         st.markdown("### 🏆 依華爾街投資建議分類之深度技術、基本面與關鍵操盤解讀")
         
         @st.cache_data(ttl=3600)
@@ -424,7 +442,7 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
                         """)
                         
                         st.markdown("---")
-                        st.markdown("##### ⚡ 華爾街 AI 戰情情報 (新聞要點拆解與精準操盤指引)")
+                        st.markdown("##### ⚡ 華爾街 AI 戰情情報 (新聞總結、預測與深度操盤指引)")
                         
                         with st.spinner(f"正在同步 {row['股票名稱']} 實時情報與操盤邏輯中..."):
                             ai_insight, rss_news = cached_ai_analysis(
