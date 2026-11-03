@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-QUANTUM ALPHA TERMINAL — 全量真實計量與技術指標實時運算引擎
+QUANTUM ALPHA TERMINAL — 全量真實計量與技術指標實時運算引擎 (含短線/中長線雙軌策略)
 """
 
 import os
@@ -504,6 +504,83 @@ class QuantScreenerEngine:
         passed_df = pd.DataFrame(final_passed)
         return passed_df, failed_df
 
+    def get_dual_track_top10(self, df_passed, capital=100000):
+        """
+        生成 TOP 10 短線操作與 TOP 10 中長線操作清單及價格要素
+        """
+        if df_passed.empty:
+            return pd.DataFrame(), pd.DataFrame()
+
+        # 1. 短線排序：依據量化預測 IC、綜合評分與夏普比率加權
+        df_short = df_passed.copy()
+        if '量化預測 IC' in df_short.columns and 'Sharpe Ratio' in df_short.columns:
+            df_short['short_score'] = df_short['量化預測 IC'] * 50 + df_short['綜合評分'] * 0.5 + df_short['Sharpe Ratio'] * 10
+            df_short = df_short.sort_values(by='short_score', ascending=False)
+        
+        top10_short = df_short.head(10).reset_index(drop=True)
+        short_results = []
+        for idx, row in top10_short.iterrows():
+            raw_p = row['raw_price'] if 'raw_p' in row or row['raw_price'] > 0 else 100.0
+            curr_sym = row['最新現價'][:1] if len(str(row['最新現價'])) > 0 else "$"
+            
+            buy_price = round(raw_p * 0.985, 2) # 回測支撐買入
+            take_profit = round(raw_p * 1.06, 2) # 短線 6% 停利
+            stop_loss = row['ATR 停損位'] # ATR 防守
+            alloc_pct = f"{round(max(2.0, 12.0 - idx * 0.8), 1)}%"
+            alloc_amt = round(capital * (float(alloc_pct.replace('%','')) / 100.0), 2)
+            reason = f"短線動能強勁（IC: {row['量化預測 IC']}），威科夫結構支撐良好，適合趁回檔快速區間套利。"
+
+            short_results.append({
+                "排名": f"#{idx+1}",
+                "股票名稱": row['股票名稱'],
+                "股票代碼": row['股票代碼'],
+                "最新現價": row['最新現價'],
+                "建議買入價": f"{curr_sym}{buy_price:,.2f}",
+                "短線停利價": f"{curr_sym}{take_profit:,.2f}",
+                "ATR 停損價": stop_loss,
+                "建議倉位": alloc_pct,
+                "配置金額 (€)": alloc_amt,
+                "一句話推薦原因": reason
+            })
+
+        # 2. 中長線排序：依據 Piotroski F-Score 與 Altman Z 破產預警安全邊際
+        df_long = df_passed.copy()
+        def extract_f(val):
+            try:
+                return int(str(val).split('/')[0])
+            except:
+                return 5
+        df_long['f_val'] = df_long['Piotroski F'].apply(extract_f)
+        df_long['long_score'] = df_long['f_val'] * 10 + df_long['Altman Z'] * 5 + df_long['綜合評分'] * 0.3
+        df_long = df_long.sort_values(by='long_score', ascending=False)
+
+        top10_long = df_long.head(10).reset_index(drop=True)
+        long_results = []
+        for idx, row in top10_long.iterrows():
+            raw_p = row['raw_price'] if row['raw_price'] > 0 else 100.0
+            curr_sym = row['最新現價'][:1] if len(str(row['最新現價'])) > 0 else "$"
+            
+            accum_price = round(raw_p * 0.95, 2) # 逢低長線佈局價
+            target_price = round(raw_p * 1.25, 2) # 中長線目標價 (+25%)
+            alloc_pct = f"{round(max(4.0, 15.0 - idx * 1.0), 1)}%"
+            alloc_amt = round(capital * (float(alloc_pct.replace('%','')) / 100.0), 2)
+            reason = f"財務體質極佳（F-Score: {row['Piotroski F']}, Altman Z: {row['Altman Z']}），具備強大護城河與長期複合成長潛力。"
+
+            long_results.append({
+                "排名": f"#{idx+1}",
+                "股票名稱": row['股票名稱'],
+                "股票代碼": row['股票代碼'],
+                "最新現價": row['最新現價'],
+                "逢低佈局價": f"{curr_sym}{accum_price:,.2f}",
+                "中長線目標價": f"{curr_sym}{target_price:,.2f}",
+                "財務安全 (F/Z)": f"{row['Piotroski F']} | Z:{row['Altman Z']}",
+                "建議倉位": alloc_pct,
+                "配置金額 (€)": alloc_amt,
+                "一句話推薦原因": reason
+            })
+
+        return pd.DataFrame(short_results), pd.DataFrame(long_results)
+
     def analyze_with_gemini(self, df_results, credit_impulse_status, m2_gap):
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
@@ -542,7 +619,6 @@ class QuantScreenerEngine:
 
         news_summary_text = "\n".join([f"- {n['title']}" for n in rss_news_list[:3]]) if rss_news_list else "暫無近期即時新聞。"
 
-        # 包含新聞總結、趨勢預測、量化評判與操盤指引的完整模組
         prompt = f"""
 以華爾街量化資深操盤手視角，用繁體中文給出結構豐富、兼具新聞總結與趨勢預測的深度戰情速報：
 - 標的：{stock_name} ({symbol})
