@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-QUANTUM ALPHA TERMINAL — 全量真實計量、技術指標與即時消息面 AI 綜合評估篩選引擎
+QUANTUM ALPHA TERMINAL — 全量真實計量、技術指標與即時消息面 AI 綜合評估篩選引擎 (含 Gemini 智慧總結)
 """
 
 import os
@@ -430,23 +430,23 @@ class QuantScreenerEngine:
             if comp_score >= 82:
                 eval_result, investment_rec = "極優 (Alpha 顯著)", "強力買進 (Strong Buy)"
                 tech_analysis = "威科夫 Phase C (Spring 彈簧洗盤確認) - 主力吸籌完成，量價齊揚。"
-                fundamental_news = f"{live_news_text[:80]}"
+                fundamental_news = f"{live_news_text[:120]}"
             elif comp_score >= 70:
                 eval_result, investment_rec = "優良 (多頭排列)", "逢低吸納 (Accumulate)"
                 tech_analysis = "威科夫 Phase B/C (箱體震盪蓄勢) - 回測支撐帶量守住。"
-                fundamental_news = f"{live_news_text[:80]}"
+                fundamental_news = f"{live_news_text[:120]}"
             elif comp_score >= 58:
                 eval_result, investment_rec = "中立 (震盪築底)", "區間操作 (Range Trade)"
                 tech_analysis = "威科夫 Phase B (橫向累積) - 均線糾結，等待方向選擇。"
-                fundamental_news = f"{live_news_text[:80]}"
+                fundamental_news = f"{live_news_text[:120]}"
             elif comp_score >= 45:
                 eval_result, investment_rec = "偏弱 (動能不足)", "減碼觀望 (Reduce / Watch)"
                 tech_analysis = "威科夫 Phase D (弱勢反彈遭逢賣壓) - 上方均線反壓重。"
-                fundamental_news = f"{live_news_text[:80]}"
+                fundamental_news = f"{live_news_text[:120]}"
             else:
                 eval_result, investment_rec = "風險 (空頭排列)", "強力賣出 / 避開 (Sell / Avoid)"
                 tech_analysis = "威科夫 Phase E (下降趨勢派發) - 跌破重要支撐。"
-                fundamental_news = f"{live_news_text[:80]}"
+                fundamental_news = f"{live_news_text[:120]}"
 
             return {
                 "股票名稱": stock, "股票代碼": symbol, "最新現價": f"{curr_symbol}{price:,.2f}", "raw_price": price,
@@ -464,7 +464,7 @@ class QuantScreenerEngine:
                 "股票名稱": stock, "股票代碼": symbol, "最新現價": "N/A", "raw_price": -1.0,
                 "貨幣": "USD", "綜合評分": 0.0, "評估結果": "不合格", "投資建議": "暫時剔除 (Exclude)",
                 "不合格原因": f"例外錯誤 ({str(e)})", "量化預測 IC": 0.0, "Sharpe Ratio": 0.0,
-                "Piotroski F": "N/A", "Altman Z": 0.0, 
+                "Piotroski F": "N/A", "Altman Z": z_raw, 
                 "技術面分析 (威科夫/ATR)": "計算例外", "消息面與基本面解讀": "系統內部錯誤",
                 "建議倉位比例": "0%", "建議配置金額 (€)": 0.0, "ATR 停損位": "N/A", "狀態": "不合格 (例外錯誤)"
             }
@@ -518,6 +518,38 @@ class QuantScreenerEngine:
         passed_df = pd.DataFrame(final_passed)
         return passed_df, failed_df
 
+    def _call_gemini_for_table_summary(self, stock_list_info, track_type="short"):
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            return {}
+
+        prompt = f"""
+作為華爾街量化資深操盤手，請為以下 Top 10 股票產出「一句話智慧推薦原因」（每句限 20 字以內，繁體中文）。
+需綜合考量其量化預測 IC、技術結構與即時消息。
+請嚴格回傳標準 JSON 格式的字典，key 為股票代碼（symbol），value 為精煉的一句話總結。不需額外說明。
+資料清單：
+{json.dumps(stock_list_info, ensure_ascii=False)}
+"""
+        models = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"maxOutputTokens": 800, "temperature": 0.2, "responseMimeType": "application/json"}
+        }
+
+        for model in models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            try:
+                response = Session().post(url, headers=headers, json=payload, timeout=20)
+                if response.status_code == 200:
+                    res_json = response.json()
+                    if "candidates" in res_json and len(res_json["candidates"]) > 0:
+                        text_res = res_json['candidates'][0]['content']['parts'][0]['text']
+                        return json.loads(text_res)
+            except Exception:
+                continue
+        return {}
+
     def get_dual_track_top10(self, df_passed, capital=100000):
         if df_passed.empty:
             return pd.DataFrame(), pd.DataFrame()
@@ -529,6 +561,19 @@ class QuantScreenerEngine:
             df_short = df_short.sort_values(by='short_score', ascending=False)
         
         top10_short = df_short.head(10).reset_index(drop=True)
+        
+        # 準備批次讓 Gemini 總結的短線資料
+        short_payload_list = []
+        for idx, row in top10_short.iterrows():
+            short_payload_list.append({
+                "symbol": row['股票代碼'],
+                "name": row['股票名稱'],
+                "ic": row['量化預測 IC'],
+                "news": row['消息面與基本面解讀'][:150]
+            })
+        
+        gemini_short_reasons = self._call_gemini_for_table_summary(short_payload_list, "short")
+
         short_results = []
         for idx, row in top10_short.iterrows():
             raw_p = row['raw_price'] if row['raw_price'] > 0 else 100.0
@@ -540,9 +585,9 @@ class QuantScreenerEngine:
             alloc_pct = f"{round(max(2.0, 12.0 - idx * 0.8), 1)}%"
             alloc_amt = round(capital * (float(alloc_pct.replace('%','')) / 100.0), 2)
             
-            # ⚡ 結合該標的的「量化IC數值」與「即時新聞動態」生成獨立綜合摘要
-            news_snippet = str(row.get('消息面與基本面解讀', '動能穩健')).replace("即時消息摘要：", "").strip()
-            ai_reason = f"IC:{row['量化預測 IC']} | 新聞焦點：{news_snippet[:45]}"
+            # 優先採用 Gemini 批次智慧總結，若未返回則退回本地精簡格式
+            sym = row['股票代碼']
+            ai_reason = gemini_short_reasons.get(sym, f"動能強勢(IC:{row['量化預測 IC']})，威科夫回檔套利。")
 
             short_results.append({
                 "排名": f"#{idx+1}",
@@ -569,6 +614,19 @@ class QuantScreenerEngine:
         df_long = df_long.sort_values(by='long_score', ascending=False)
 
         top10_long = df_long.head(10).reset_index(drop=True)
+        
+        long_payload_list = []
+        for idx, row in top10_long.iterrows():
+            long_payload_list.append({
+                "symbol": row['股票代碼'],
+                "name": row['股票名稱'],
+                "f_score": row['Piotroski F'],
+                "altman_z": row['Altman Z'],
+                "news": row['消息面與基本面解讀'][:150]
+            })
+            
+        gemini_long_reasons = self._call_gemini_for_table_summary(long_payload_list, "long")
+
         long_results = []
         for idx, row in top10_long.iterrows():
             raw_p = row['raw_price'] if row['raw_price'] > 0 else 100.0
@@ -579,9 +637,8 @@ class QuantScreenerEngine:
             alloc_pct = f"{round(max(4.0, 15.0 - idx * 1.0), 1)}%"
             alloc_amt = round(capital * (float(alloc_pct.replace('%','')) / 100.0), 2)
             
-            # ⚡ 結合該標的的「財務得分(F/Z)」與「即時新聞動態」生成獨立綜合摘要
-            news_snippet = str(row.get('消息面與基本面解讀', '體質健全')).replace("即時消息摘要：", "").strip()
-            ai_reason = f"F:{row['Piotroski F']} Z:{row['Altman Z']} | 新聞焦點：{news_snippet[:45]}"
+            sym = row['股票代碼']
+            ai_reason = gemini_long_reasons.get(sym, f"財務極佳(F:{row['Piotroski F']} Z:{row['Altman Z']})，護城河深厚。")
 
             long_results.append({
                 "排名": f"#{idx+1}",
