@@ -378,7 +378,6 @@ class QuantScreenerEngine:
                     "ATR 停損位": "N/A", "狀態": "不合格 (數據異常)"
                 }
 
-            # ⚡ 篩選時即時拉取新聞並進行情感加權
             live_news_text = self._fetch_live_news_summary(stock)
             news_sentiment_bonus = 4.0 if any(k in live_news_text.lower() for k in ["surge", "jump", "beat", "growth", "rally", "record", "buy", "up", "bull", "profit", "launch"]) else 0.0
 
@@ -407,7 +406,6 @@ class QuantScreenerEngine:
             returns_3m = float(df['Close'].iloc[-1] / df['Close'].iloc[-60] - 1) if len(df) >= 60 and df['Close'].iloc[-60] > 0 else 0.03
             ic_score = round(min(0.35, max(-0.15, returns_3m * 0.45 + 0.03)) * macro_multiplier, 3)
 
-            # 綜合評分融入即時消息面加權
             raw_score = (ic_score * 140.0 + max(-1.0, sharpe) * 12.0 + (f_raw / 9.0) * 30.0 + min(z_raw, 6.0) * 4.0 + news_sentiment_bonus)
             comp_score = round(max(0.0, min(100.0, raw_score + 25.0)), 1)
 
@@ -542,12 +540,8 @@ class QuantScreenerEngine:
             alloc_pct = f"{round(max(2.0, 12.0 - idx * 0.8), 1)}%"
             alloc_amt = round(capital * (float(alloc_pct.replace('%','')) / 100.0), 2)
             
-            # ⚡ 提取篩選時已融合的即時消息面與 AI 綜合評分解讀
-            news_summary = str(row.get('消息面與基本面解讀', '動能強勁'))
-            if "即時消息驅動摘要：" in news_summary:
-                news_summary = news_summary.replace("即時消息驅動摘要：", "")
-            
-            ai_reason = f"【短線 AI 綜合研判】#{idx+1}：IC ({row['量化預測 IC']}) 強勢。即時消息驅動：{news_summary[:65]}..."
+            # ⚡ 極簡一句話總結（不超過 15 字，無冗長廢話）
+            ai_reason = f"動能強勢(IC:{row['量化預測 IC']})，威科夫彈簧回檔套利。"
 
             short_results.append({
                 "排名": f"#{idx+1}",
@@ -559,7 +553,7 @@ class QuantScreenerEngine:
                 "ATR 停損價": stop_loss,
                 "建議倉位": alloc_pct,
                 "配置金額 (€)": alloc_amt,
-                "AI 與即時消息綜合推薦原因": ai_reason
+                "一句話推薦原因": ai_reason
             })
 
         # 2. 中長線排序
@@ -584,11 +578,8 @@ class QuantScreenerEngine:
             alloc_pct = f"{round(max(4.0, 15.0 - idx * 1.0), 1)}%"
             alloc_amt = round(capital * (float(alloc_pct.replace('%','')) / 100.0), 2)
             
-            news_summary = str(row.get('消息面與基本面解讀', '財務健全'))
-            if "即時消息驅動摘要：" in news_summary:
-                news_summary = news_summary.replace("即時消息驅動摘要：", "")
-
-            ai_reason = f"【長線 AI 綜合研判】#{idx+1}：F-Score {row['Piotroski F']} 且 Z:{row['Altman Z']}。訊息面護城河：{news_summary[:65]}..."
+            # ⚡ 極簡一句話總結（不超過 15 字，無冗長廢話）
+            ai_reason = f"財務極佳(F:{row['Piotroski F']} Z:{row['Altman Z']})，護城河深厚。"
 
             long_results.append({
                 "排名": f"#{idx+1}",
@@ -600,7 +591,7 @@ class QuantScreenerEngine:
                 "財務安全 (F/Z)": f"{row['Piotroski F']} | Z:{row['Altman Z']}",
                 "建議倉位": alloc_pct,
                 "配置金額 (€)": alloc_amt,
-                "AI 與即時消息綜合推薦原因": ai_reason
+                "一句話推薦原因": ai_reason
             })
 
         return pd.DataFrame(short_results), pd.DataFrame(long_results)
@@ -617,7 +608,7 @@ class QuantScreenerEngine:
 - 投組摘要：{json.dumps(data_summary, ensure_ascii=False)}
 請給出 3 點核心操作指引（條列式，繁體中文）。
 """
-        models = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
+        models = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
         headers = {"Content-Type": "application/json"}
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
@@ -652,16 +643,12 @@ class QuantScreenerEngine:
 {news_summary_text}
 
 請嚴格按照以下四個模組輸出詳盡的專業分析：
-1. **📰 最近新聞總結與事件驅動**：
-   - 摘要近期關鍵新聞的核心焦點，並精準解讀市場資金的真實反應與情緒變化。
-2. **🔮 趨勢預測與短中線展望**：
-   - 結合新聞面催化與量化指標，預判該標的接下來幾週的價格走勢與潛在波動方向。
-3. **📊 量化基本面與技術面評判**：
-   - 評估財務健康度（如 F-Score/Altman Z）與威科夫微觀結構（如吸籌、洗盤或發散階段）。
-4. **🎯 具體操盤指引與風控規劃**：
-   - 給出明確的進場建倉區間、ATR 防守停損位以及中短線階段性目標規劃。
+1. **📰 最近新聞總結與事件驅動**：摘要近期關鍵新聞焦點與市場資金反應。
+2. **🔮 趨勢預測與短中線展望**：結合新聞面與量化指標預判走勢。
+3. **📊 量化基本面與技術面評判**：評估財務健康度與威科夫微觀結構。
+4. **🎯 具體操盤指引與風控規劃**：給出明確建倉區間、ATR 停損與目標價。
 """
-        models = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
+        models = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
         headers = {"Content-Type": "application/json"}
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
