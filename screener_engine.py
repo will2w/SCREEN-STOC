@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-QUANTUM ALPHA TERMINAL — 全量真實計量與技術指標實時運算引擎 (含 AI 結合新聞的雙軌戰情室)
+QUANTUM ALPHA TERMINAL — 全量真實計量、技術指標與即時消息面 AI 綜合評估篩選引擎
 """
 
 import os
@@ -17,6 +17,7 @@ import numpy as np
 import yfinance as yf
 from yahooquery import Ticker as YQ_Ticker
 from requests import Session
+import feedparser
 
 class QuantScreenerEngine:
     def __init__(self, watchlist_path="Watchlist_Stocks.xlsx", cache_path="symbol_cache.json"):
@@ -237,6 +238,18 @@ class QuantScreenerEngine:
         }
         return mapping.get(currency_code, currency_code + " ")
 
+    def _fetch_live_news_summary(self, stock_query):
+        try:
+            clean_q = str(stock_query).split(".")[0].strip()
+            rss_url = f"https://news.google.com/rss/search?q={urllib.parse.quote(clean_q + ' stock')}&hl=en-US&gl=US&ceid=US:en"
+            feed = feedparser.parse(rss_url)
+            titles = [entry.get('title', '') for entry in feed.entries[:3]]
+            if titles:
+                return " | ".join(titles)
+            return "近期無重大突發財經頭條。"
+        except Exception:
+            return "消息面平穩。"
+
     def _calculate_real_fundamental_scores(self, ticker_obj, price):
         try:
             fin = ticker_obj.financials
@@ -365,6 +378,10 @@ class QuantScreenerEngine:
                     "ATR 停損位": "N/A", "狀態": "不合格 (數據異常)"
                 }
 
+            # ⚡ 篩選時即時拉取新聞並進行情感加權
+            live_news_text = self._fetch_live_news_summary(stock)
+            news_sentiment_bonus = 4.0 if any(k in live_news_text.lower() for k in ["surge", "jump", "beat", "growth", "rally", "record", "buy", "up", "bull", "profit", "launch"]) else 0.0
+
             yf_ticker_obj = yf.Ticker(symbol, session=self.session)
             f_raw, z_raw = self._calculate_real_fundamental_scores(yf_ticker_obj, price)
 
@@ -390,7 +407,8 @@ class QuantScreenerEngine:
             returns_3m = float(df['Close'].iloc[-1] / df['Close'].iloc[-60] - 1) if len(df) >= 60 and df['Close'].iloc[-60] > 0 else 0.03
             ic_score = round(min(0.35, max(-0.15, returns_3m * 0.45 + 0.03)) * macro_multiplier, 3)
 
-            raw_score = (ic_score * 140.0 + max(-1.0, sharpe) * 12.0 + (f_raw / 9.0) * 30.0 + min(z_raw, 6.0) * 4.0)
+            # 綜合評分融入即時消息面加權
+            raw_score = (ic_score * 140.0 + max(-1.0, sharpe) * 12.0 + (f_raw / 9.0) * 30.0 + min(z_raw, 6.0) * 4.0 + news_sentiment_bonus)
             comp_score = round(max(0.0, min(100.0, raw_score + 25.0)), 1)
 
             reasons = []
@@ -406,7 +424,7 @@ class QuantScreenerEngine:
                     "不合格原因": "；".join(reasons), "量化預測 IC": ic_score, "Sharpe Ratio": sharpe,
                     "Piotroski F": f"{f_raw}/9", "Altman Z": z_raw, 
                     "技術面分析 (威科夫/ATR)": "流動性枯竭，短線偏弱，建議落袋或避開",
-                    "消息面與基本面解讀": "交易熱度不足，機構資金暫未進駐",
+                    "消息面與基本面解讀": f"即時消息驅動摘要：{live_news_text[:120]}",
                     "建議倉位比例": "0%", "建議配置金額 (€)": 0.0, "ATR 停損位": f"{curr_symbol}{max(0, price - 2 * atr):,.2f}",
                     "狀態": "不合格 (流動性不足)"
                 }
@@ -414,23 +432,23 @@ class QuantScreenerEngine:
             if comp_score >= 82:
                 eval_result, investment_rec = "極優 (Alpha 顯著)", "強力買進 (Strong Buy)"
                 tech_analysis = "威科夫 Phase C (Spring 彈簧洗盤確認) - 主力吸籌完成，量價齊揚。"
-                fundamental_news = f"基本面強韌（Piotroski F: {f_raw}/9, Altman Z: {z_raw}），機構買盤積極。"
+                fundamental_news = f"強消息催化（{live_news_text[:50]}...），F-Score: {f_raw}/9。"
             elif comp_score >= 70:
                 eval_result, investment_rec = "優良 (多頭排列)", "逢低吸納 (Accumulate)"
                 tech_analysis = "威科夫 Phase B/C (箱體震盪蓄勢) - 回測支撐帶量守住。"
-                fundamental_news = f"財務結構健全（F-Score: {f_raw}/9），現金流充沛。"
+                fundamental_news = f"消息面穩健（{live_news_text[:50]}...），現金流充沛。"
             elif comp_score >= 58:
                 eval_result, investment_rec = "中立 (震盪築底)", "區間操作 (Range Trade)"
                 tech_analysis = "威科夫 Phase B (橫向累積) - 均線糾結，等待方向選擇。"
-                fundamental_news = f"財務體質平穩（F-Score: {f_raw}/9），業績符合預期。"
+                fundamental_news = f"消息面平穩（{live_news_text[:50]}...），業績符合預期。"
             elif comp_score >= 45:
                 eval_result, investment_rec = "偏弱 (動能不足)", "減碼觀望 (Reduce / Watch)"
                 tech_analysis = "威科夫 Phase D (弱勢反彈遭逢賣壓) - 上方均線反壓重。"
-                fundamental_news = f"短期面臨產業逆風（F-Score: {f_raw}/9），財報動能放緩。"
+                fundamental_news = f"短期面臨消息面逆風（{live_news_text[:50]}...）。"
             else:
                 eval_result, investment_rec = "風險 (空頭排列)", "強力賣出 / 避開 (Sell / Avoid)"
                 tech_analysis = "威科夫 Phase E (下降趨勢派發) - 跌破重要支撐。"
-                fundamental_news = f"財務與破產預警偏弱（Altman Z: {z_raw}），建議嚴格停損。"
+                fundamental_news = f"消息面偏空與破產預警（Altman Z: {z_raw}）。"
 
             return {
                 "股票名稱": stock, "股票代碼": symbol, "最新現價": f"{curr_symbol}{price:,.2f}", "raw_price": price,
@@ -506,6 +524,7 @@ class QuantScreenerEngine:
         if df_passed.empty:
             return pd.DataFrame(), pd.DataFrame()
 
+        # 1. 短線排序
         df_short = df_passed.copy()
         if '量化預測 IC' in df_short.columns and 'Sharpe Ratio' in df_short.columns:
             df_short['short_score'] = df_short['量化預測 IC'] * 50 + df_short['綜合評分'] * 0.5 + df_short['Sharpe Ratio'] * 10
@@ -514,7 +533,7 @@ class QuantScreenerEngine:
         top10_short = df_short.head(10).reset_index(drop=True)
         short_results = []
         for idx, row in top10_short.iterrows():
-            raw_p = row['raw_price'] if 'raw_p' in row or row['raw_price'] > 0 else 100.0
+            raw_p = row['raw_price'] if row['raw_price'] > 0 else 100.0
             curr_sym = row['最新現價'][:1] if len(str(row['最新現價'])) > 0 else "$"
             
             buy_price = round(raw_p * 0.985, 2)
@@ -522,7 +541,13 @@ class QuantScreenerEngine:
             stop_loss = row['ATR 停損位']
             alloc_pct = f"{round(max(2.0, 12.0 - idx * 0.8), 1)}%"
             alloc_amt = round(capital * (float(alloc_pct.replace('%','')) / 100.0), 2)
-            reason = f"短線動能強勁（IC: {row['量化預測 IC']}），威科夫結構支撐良好，適合趁回檔快速區間套利。"
+            
+            # ⚡ 提取篩選時已融合的即時消息面與 AI 綜合評分解讀
+            news_summary = str(row.get('消息面與基本面解讀', '動能強勁'))
+            if "即時消息驅動摘要：" in news_summary:
+                news_summary = news_summary.replace("即時消息驅動摘要：", "")
+            
+            ai_reason = f"【短線 AI 綜合研判】#{idx+1}：IC ({row['量化預測 IC']}) 強勢。即時消息驅動：{news_summary[:65]}..."
 
             short_results.append({
                 "排名": f"#{idx+1}",
@@ -534,9 +559,10 @@ class QuantScreenerEngine:
                 "ATR 停損價": stop_loss,
                 "建議倉位": alloc_pct,
                 "配置金額 (€)": alloc_amt,
-                "一句話推薦原因": reason
+                "AI 與即時消息綜合推薦原因": ai_reason
             })
 
+        # 2. 中長線排序
         df_long = df_passed.copy()
         def extract_f(val):
             try:
@@ -557,7 +583,12 @@ class QuantScreenerEngine:
             target_price = round(raw_p * 1.25, 2)
             alloc_pct = f"{round(max(4.0, 15.0 - idx * 1.0), 1)}%"
             alloc_amt = round(capital * (float(alloc_pct.replace('%','')) / 100.0), 2)
-            reason = f"財務體質極佳（F-Score: {row['Piotroski F']}, Altman Z: {row['Altman Z']}），具備強大護城河與長期複合成長潛力。"
+            
+            news_summary = str(row.get('消息面與基本面解讀', '財務健全'))
+            if "即時消息驅動摘要：" in news_summary:
+                news_summary = news_summary.replace("即時消息驅動摘要：", "")
+
+            ai_reason = f"【長線 AI 綜合研判】#{idx+1}：F-Score {row['Piotroski F']} 且 Z:{row['Altman Z']}。訊息面護城河：{news_summary[:65]}..."
 
             long_results.append({
                 "排名": f"#{idx+1}",
@@ -569,7 +600,7 @@ class QuantScreenerEngine:
                 "財務安全 (F/Z)": f"{row['Piotroski F']} | Z:{row['Altman Z']}",
                 "建議倉位": alloc_pct,
                 "配置金額 (€)": alloc_amt,
-                "一句話推薦原因": reason
+                "AI 與即時消息綜合推薦原因": ai_reason
             })
 
         return pd.DataFrame(short_results), pd.DataFrame(long_results)
