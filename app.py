@@ -2,7 +2,7 @@
 """
 app.py
 ------
-QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策系統 (極致賽博龐克戰情室版)
+QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策系統 (支援自定義上傳與手動輸入)
 """
 
 import streamlit as st
@@ -140,7 +140,7 @@ st.markdown('<div class="cyber-header">⚡ QUANTUM ALPHA TERMINAL</div>', unsafe
 st.markdown('<div class="cyber-sub">[SYSTEM_ACTIVE] // GLOBAL QUANTITATIVE SCREENING & DYNAMIC ASSET ALLOCATION // 2026 CYBERNETIC WARFARE EDITION</div>', unsafe_allow_html=True)
 
 engine = QuantScreenerEngine()
-watchlist = engine.watchlist
+default_watchlist = engine.watchlist
 
 market_state = engine.get_current_market_state()
 default_impulse = market_state["credit_impulse"]
@@ -168,19 +168,63 @@ m2_gap = st.sidebar.slider(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("#### 股票池選取模式")
-selection_mode = st.sidebar.radio(
-    "選擇模式", 
-    ["評估 Excel 中的全部股票", "自選特定標的池"], 
-    index=0, 
+st.sidebar.markdown("#### 📁 股票池來源與輸入模式")
+
+watchlist_source = st.sidebar.radio(
+    "選擇股票池來源", 
+    ["預設 Excel 檔案", "上傳自定義檔案 (Excel/CSV)", "手動輸入股票代碼"],
     label_visibility="collapsed"
 )
 
-if selection_mode == "評估 Excel 中的全部股票":
-    selected_stocks = watchlist
-    st.sidebar.success(f"✅ 已自動載入 Excel 中的全部 {len(watchlist)} 檔股票進行全景評估。")
+active_watchlist = default_watchlist
+
+if watchlist_source == "上傳自定義檔案 (Excel/CSV)":
+    uploaded_file = st.sidebar.file_uploader("上傳 Excel 或 CSV 檔案", type=["xlsx", "csv"])
+    if uploaded_file is not None:
+        try:
+            if uploaded_file.name.endswith('.csv'):
+                df_upload = pd.read_csv(uploaded_file)
+            else:
+                df_upload = pd.read_excel(uploaded_file)
+            
+            # 自動抓取第一欄或名稱欄作為股票池
+            target_col = None
+            for col in df_upload.columns:
+                if any(k in str(col).lower() for k in ["name", "symbol", "ticker", "名稱", "代碼"]):
+                    target_col = col
+                    break
+            if target_col is None:
+                target_col = df_upload.columns[0]
+            
+            active_watchlist = df_upload[target_col].dropna().astype(str).str.strip().tolist()
+            st.sidebar.success(f"✅ 成功載入上傳檔案，共 {len(active_watchlist)} 檔標的。")
+        except Exception as e:
+            st.sidebar.error(f"❌ 讀取檔案失敗: {e}")
+
+elif watchlist_source == "手動輸入股票代碼":
+    manual_input = st.sidebar.text_area(
+        "輸入股票代碼 (支援逗號或換行分隔)", 
+        value="NVDA, AAPL, TSLA, MSFT, BAS.DE, EON.DE",
+        height=100
+    )
+    if manual_input:
+        # 支援用逗號、分號或換行符分隔
+        raw_items = manual_input.replace(";", ",").replace("\n", ",").split(",")
+        active_watchlist = [item.strip() for item in raw_items if item.strip()]
+        st.sidebar.success(f"✅ 已解析手動輸入的 {len(active_watchlist)} 檔標的。")
+
+st.sidebar.markdown("---")
+selection_mode = st.sidebar.radio(
+    "選取過濾模式", 
+    ["評估全部標的", "自選特定標的池子集"], 
+    index=0
+)
+
+if selection_mode == "評估全部標的":
+    selected_stocks = active_watchlist
+    st.sidebar.info(f"📊 將全面評估當前來源的 {len(active_watchlist)} 檔股票。")
 else:
-    selected_stocks = st.sidebar.multiselect("選取目標標的池", watchlist, default=watchlist[:15] if len(watchlist)>=15 else watchlist)
+    selected_stocks = st.sidebar.multiselect("從當前清單中勾選", active_watchlist, default=active_watchlist[:15] if len(active_watchlist)>=15 else active_watchlist)
 
 st.sidebar.markdown("---")
 kelly_mode = st.sidebar.selectbox(
@@ -216,7 +260,7 @@ def fetch_stock_rss_news(symbol_or_name):
 
 if run_btn:
     if not selected_stocks:
-        st.warning("請至少選取或載入一檔股票。")
+        st.warning("請至少選取或輸入一檔股票。")
     else:
         progress_bar = st.progress(0)
         status_text = st.empty()
@@ -225,7 +269,7 @@ if run_btn:
         progress_bar.progress(25)
         time.sleep(0.2)
         
-        status_text.text("🚀 [02/03] 執行多維度量化引擎、威科夫微觀結構與華爾街評分運算...")
+        status_text.text("🚀 [02/03] 執行多維度量化引擎、威科夫微觀結構與真實財報運算...")
         progress_bar.progress(60)
         
         df_res, df_unqualified = engine.run_screening_with_unqualified(
@@ -243,7 +287,7 @@ if run_btn:
         if df_res.empty and df_unqualified.empty:
             progress_bar.empty()
             status_text.empty()
-            st.error("篩選結果為空，請檢查網絡連線或標的流動性狀態。")
+            st.error("篩選結果為空，請檢查網絡連線或標的代碼是否正確。")
         else:
             st.session_state['df_res'] = df_res
             st.session_state['df_unqualified'] = df_unqualified
