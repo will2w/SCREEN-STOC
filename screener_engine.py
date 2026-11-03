@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-QUANTUM ALPHA TERMINAL — 全量真實計量與技術指標實時運算引擎 (含短線/中長線雙軌策略)
+QUANTUM ALPHA TERMINAL — 全量真實計量與技術指標實時運算引擎 (含 AI 結合新聞的雙軌戰情室)
 """
 
 import os
@@ -113,7 +113,6 @@ class QuantScreenerEngine:
 
     def get_ticker_symbol(self, stock_name):
         name_clean = str(stock_name).strip()
-        
         if name_clean in self._symbol_cache and self._symbol_cache[name_clean]:
             return self._symbol_cache[name_clean]
 
@@ -309,13 +308,12 @@ class QuantScreenerEngine:
 
     def _process_single_stock(self, stock, macro_multiplier):
         symbol = self.get_ticker_symbol(stock)
-        
         if not symbol:
             return {
                 "股票名稱": stock, "股票代碼": "N/A", "最新現價": "N/A", "raw_price": -1.0,
                 "貨幣": "USD", "綜合評分": 0.0, "評估結果": "不合格", "投資建議": "暫時剔除 (Exclude)",
                 "不合格原因": "非純股票資產或無法解析有效代碼", "量化預測 IC": 0.0, "Sharpe Ratio": 0.0,
-                "Piotroski F": "5/9", "Altman Z": 2.5, "技術面分析 (威科夫/ATR)": "N/A",
+                "Piotroski F": "N/A", "Altman Z": 0.0, "技術面分析 (威科夫/ATR)": "N/A",
                 "消息面與基本面解讀": "無法取得有效市場數據", "建議倉位比例": "0%", "建議配置金額 (€)": 0.0, 
                 "ATR 停損位": "N/A", "狀態": "不合格"
             }
@@ -351,7 +349,7 @@ class QuantScreenerEngine:
                     "股票名稱": stock, "股票代碼": symbol, "最新現價": "N/A", "raw_price": -1.0,
                     "貨幣": currency, "綜合評分": 0.0, "評估結果": "不合格", "投資建議": "暫時剔除 (Exclude)",
                     "不合格原因": f"雙軌備援後仍無法取得歷史行情 ({symbol})", "量化預測 IC": 0.0, "Sharpe Ratio": 0.0,
-                    "Piotroski F": "5/9", "Altman Z": 2.5, "技術面分析 (威科夫/ATR)": "N/A",
+                    "Piotroski F": "N/A", "Altman Z": 0.0, "技術面分析 (威科夫/ATR)": "N/A",
                     "消息面與基本面解讀": "歷史行情取得受限或 API 頻率超限", "建議倉位比例": "0%", 
                     "建議配置金額 (€)": 0.0, "ATR 停損位": "N/A", "狀態": "不合格 (資料源受限)"
                 }
@@ -362,7 +360,7 @@ class QuantScreenerEngine:
                     "股票名稱": stock, "股票代碼": symbol, "最新現價": "N/A", "raw_price": -1.0,
                     "貨幣": currency, "綜合評分": 0.0, "評估結果": "不合格", "投資建議": "暫時迴避 (Avoid)",
                     "不合格原因": "股價資料無效或為零", "量化預測 IC": 0.0, "Sharpe Ratio": 0.0,
-                    "Piotroski F": "5/9", "Altman Z": 2.5, "技術面分析 (威科夫/ATR)": "N/A",
+                    "Piotroski F": "N/A", "Altman Z": 0.0, "技術面分析 (威科夫/ATR)": "N/A",
                     "消息面與基本面解讀": "價格數據異常", "建議倉位比例": "0%", "建議配置金額 (€)": 0.0, 
                     "ATR 停損位": "N/A", "狀態": "不合格 (數據異常)"
                 }
@@ -450,7 +448,7 @@ class QuantScreenerEngine:
                 "股票名稱": stock, "股票代碼": symbol, "最新現價": "N/A", "raw_price": -1.0,
                 "貨幣": "USD", "綜合評分": 0.0, "評估結果": "不合格", "投資建議": "暫時剔除 (Exclude)",
                 "不合格原因": f"例外錯誤 ({str(e)})", "量化預測 IC": 0.0, "Sharpe Ratio": 0.0,
-                "Piotroski F": "5/9", "Altman Z": 2.5, 
+                "Piotroski F": "N/A", "Altman Z": 0.0, 
                 "技術面分析 (威科夫/ATR)": "計算例外", "消息面與基本面解讀": "系統內部錯誤",
                 "建議倉位比例": "0%", "建議配置金額 (€)": 0.0, "ATR 停損位": "N/A", "狀態": "不合格 (例外錯誤)"
             }
@@ -505,13 +503,9 @@ class QuantScreenerEngine:
         return passed_df, failed_df
 
     def get_dual_track_top10(self, df_passed, capital=100000):
-        """
-        生成 TOP 10 短線操作與 TOP 10 中長線操作清單及價格要素
-        """
         if df_passed.empty:
             return pd.DataFrame(), pd.DataFrame()
 
-        # 1. 短線排序：依據量化預測 IC、綜合評分與夏普比率加權
         df_short = df_passed.copy()
         if '量化預測 IC' in df_short.columns and 'Sharpe Ratio' in df_short.columns:
             df_short['short_score'] = df_short['量化預測 IC'] * 50 + df_short['綜合評分'] * 0.5 + df_short['Sharpe Ratio'] * 10
@@ -523,9 +517,9 @@ class QuantScreenerEngine:
             raw_p = row['raw_price'] if 'raw_p' in row or row['raw_price'] > 0 else 100.0
             curr_sym = row['最新現價'][:1] if len(str(row['最新現價'])) > 0 else "$"
             
-            buy_price = round(raw_p * 0.985, 2) # 回測支撐買入
-            take_profit = round(raw_p * 1.06, 2) # 短線 6% 停利
-            stop_loss = row['ATR 停損位'] # ATR 防守
+            buy_price = round(raw_p * 0.985, 2)
+            take_profit = round(raw_p * 1.06, 2)
+            stop_loss = row['ATR 停損位']
             alloc_pct = f"{round(max(2.0, 12.0 - idx * 0.8), 1)}%"
             alloc_amt = round(capital * (float(alloc_pct.replace('%','')) / 100.0), 2)
             reason = f"短線動能強勁（IC: {row['量化預測 IC']}），威科夫結構支撐良好，適合趁回檔快速區間套利。"
@@ -543,7 +537,6 @@ class QuantScreenerEngine:
                 "一句話推薦原因": reason
             })
 
-        # 2. 中長線排序：依據 Piotroski F-Score 與 Altman Z 破產預警安全邊際
         df_long = df_passed.copy()
         def extract_f(val):
             try:
@@ -560,8 +553,8 @@ class QuantScreenerEngine:
             raw_p = row['raw_price'] if row['raw_price'] > 0 else 100.0
             curr_sym = row['最新現價'][:1] if len(str(row['最新現價'])) > 0 else "$"
             
-            accum_price = round(raw_p * 0.95, 2) # 逢低長線佈局價
-            target_price = round(raw_p * 1.25, 2) # 中長線目標價 (+25%)
+            accum_price = round(raw_p * 0.95, 2)
+            target_price = round(raw_p * 1.25, 2)
             alloc_pct = f"{round(max(4.0, 15.0 - idx * 1.0), 1)}%"
             alloc_amt = round(capital * (float(alloc_pct.replace('%','')) / 100.0), 2)
             reason = f"財務體質極佳（F-Score: {row['Piotroski F']}, Altman Z: {row['Altman Z']}），具備強大護城河與長期複合成長潛力。"
