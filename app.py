@@ -2,7 +2,7 @@
 """
 app.py
 ------
-QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策系統 (含短線/長線雙軌戰情室)
+QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策系統 (含 AI 新聞聯動雙軌戰情室)
 """
 
 import streamlit as st
@@ -266,7 +266,7 @@ if run_btn:
         progress_bar.progress(25)
         time.sleep(0.2)
         
-        status_text.text("🚀 [02/03] 執行多維度量化引擎、威科夫微觀結構與真實財報運算...")
+        status_text.text("🚀 [02/03] 執行多維度量化引擎、即時 RSS 消息面融合與真實財報運算...")
         progress_bar.progress(60)
         
         df_res, df_unqualified = engine.run_screening_with_unqualified(
@@ -315,7 +315,7 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
         "🎯 Portfolio Top 15 核心投組", 
         "⚡ TOP 10 短線與中長線雙軌戰情室",
         "💰 投資建議與倉位配置總覽", 
-        "🏆 專業投研技術與基本面解讀"
+        "🏆 依投資建議分類之 TOP 5 深度戰情解讀"
     ])
     
     with tab1:
@@ -362,23 +362,23 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
 
     with tab4:
         st.markdown("### ⚡ TOP 10 短線動能操作 vs TOP 10 中長線價值佈局雙軌戰情室")
-        st.markdown("本模組基於實時量化指標與價格動態，為您精準拆解短線波段要素（買入價、停利價、ATR停損、倉位）與中長線護城河要素（佈局價、目標價、財務安全分、倉位），並附帶精煉推薦原因。")
+        st.markdown("結合**量化價格要素**、**即時 RSS 財經新聞**與 **Gemini AI 智慧總結**，為您完整展開短線與中長線的精準操盤指引。")
         
         df_short_top10, df_long_top10 = engine.get_dual_track_top10(df_res, capital=total_capital)
         
         st.markdown("---")
         st.markdown("#### 🚀 TOP 10 短線動能操作精選標的")
         if df_short_top10.empty:
-            st.info("目前合格股票池數量不足 10 檔，請擴大股票池。")
+            st.info("目前合格股票池數量不足 10 檔。")
         else:
-            st.dataframe(df_short_top10, use_container_width=True, height=420)
+            st.dataframe(df_short_top10, use_container_width=True, height=450)
             
         st.markdown("---")
         st.markdown("#### 🏛️ TOP 10 中長線價值佈局精選標的")
         if df_long_top10.empty:
-            st.info("目前合格股票池數量不足 10 檔，請擴大股票池。")
+            st.info("目前合格股票池數量不足 10 檔。")
         else:
-            st.dataframe(df_long_top10, use_container_width=True, height=420)
+            st.dataframe(df_long_top10, use_container_width=True, height=450)
         
     with tab5:
         st.markdown("### 💰 投資建議與動態資金配置總覽")
@@ -409,7 +409,7 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
             st.plotly_chart(fig_pie, use_container_width=True)
             
     with tab6:
-        st.markdown("### 🏆 依華爾街投資建議分類之深度技術、基本面與關鍵操盤解讀")
+        st.markdown("### 🏆 依華爾街投資建議分類之 TOP 5 深度技術、基本面與關鍵操盤解讀")
         
         @st.cache_data(ttl=3600)
         def cached_ai_analysis(stock_name, symbol, tech_str, fundamental_str):
@@ -424,9 +424,10 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
 
         rec_types = df_res['投資建議'].unique()
         for rec in rec_types:
-            sub_df = df_res[df_res['投資建議'] == rec].head(10)
+            # ⚡ 這裡已調整為每個類別顯示 TOP 5
+            sub_df = df_res[df_res['投資建議'] == rec].head(5)
             if not sub_df.empty:
-                st.markdown(f"#### 🔥 【{rec}】精選標的 (共 {len(sub_df)} 檔)")
+                st.markdown(f"#### 🔥 【{rec}】TOP 5 精選標的 (共 {len(sub_df)} 檔)")
                 for idx, row in sub_df.iterrows():
                     with st.expander(f"📌 {row['股票名稱']} ({row['股票代碼']}) — 現價: {row['最新現價']} | 綜合評分: {row['綜合評分']}分 | 建議: {row['投資建議']}"):
                         ca, cb, cc, cd = st.columns(4)
