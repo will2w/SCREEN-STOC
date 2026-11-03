@@ -422,7 +422,7 @@ class QuantScreenerEngine:
                     "不合格原因": "；".join(reasons), "量化預測 IC": ic_score, "Sharpe Ratio": sharpe,
                     "Piotroski F": f"{f_raw}/9", "Altman Z": z_raw, 
                     "技術面分析 (威科夫/ATR)": "流動性枯竭，短線偏弱，建議落袋或避開",
-                    "消息面與基本面解讀": f"即時消息驅動摘要：{live_news_text[:120]}",
+                    "消息面與基本面解讀": f"即時消息摘要：{live_news_text[:120]}",
                     "建議倉位比例": "0%", "建議配置金額 (€)": 0.0, "ATR 停損位": f"{curr_symbol}{max(0, price - 2 * atr):,.2f}",
                     "狀態": "不合格 (流動性不足)"
                 }
@@ -430,23 +430,23 @@ class QuantScreenerEngine:
             if comp_score >= 82:
                 eval_result, investment_rec = "極優 (Alpha 顯著)", "強力買進 (Strong Buy)"
                 tech_analysis = "威科夫 Phase C (Spring 彈簧洗盤確認) - 主力吸籌完成，量價齊揚。"
-                fundamental_news = f"強消息催化（{live_news_text[:50]}...），F-Score: {f_raw}/9。"
+                fundamental_news = f"{live_news_text[:80]}"
             elif comp_score >= 70:
                 eval_result, investment_rec = "優良 (多頭排列)", "逢低吸納 (Accumulate)"
                 tech_analysis = "威科夫 Phase B/C (箱體震盪蓄勢) - 回測支撐帶量守住。"
-                fundamental_news = f"消息面穩健（{live_news_text[:50]}...），現金流充沛。"
+                fundamental_news = f"{live_news_text[:80]}"
             elif comp_score >= 58:
                 eval_result, investment_rec = "中立 (震盪築底)", "區間操作 (Range Trade)"
                 tech_analysis = "威科夫 Phase B (橫向累積) - 均線糾結，等待方向選擇。"
-                fundamental_news = f"消息面平穩（{live_news_text[:50]}...），業績符合預期。"
+                fundamental_news = f"{live_news_text[:80]}"
             elif comp_score >= 45:
                 eval_result, investment_rec = "偏弱 (動能不足)", "減碼觀望 (Reduce / Watch)"
                 tech_analysis = "威科夫 Phase D (弱勢反彈遭逢賣壓) - 上方均線反壓重。"
-                fundamental_news = f"短期面臨消息面逆風（{live_news_text[:50]}...）。"
+                fundamental_news = f"{live_news_text[:80]}"
             else:
                 eval_result, investment_rec = "風險 (空頭排列)", "強力賣出 / 避開 (Sell / Avoid)"
                 tech_analysis = "威科夫 Phase E (下降趨勢派發) - 跌破重要支撐。"
-                fundamental_news = f"消息面偏空與破產預警（Altman Z: {z_raw}）。"
+                fundamental_news = f"{live_news_text[:80]}"
 
             return {
                 "股票名稱": stock, "股票代碼": symbol, "最新現價": f"{curr_symbol}{price:,.2f}", "raw_price": price,
@@ -540,8 +540,9 @@ class QuantScreenerEngine:
             alloc_pct = f"{round(max(2.0, 12.0 - idx * 0.8), 1)}%"
             alloc_amt = round(capital * (float(alloc_pct.replace('%','')) / 100.0), 2)
             
-            # ⚡ 極簡一句話總結（不超過 15 字，無冗長廢話）
-            ai_reason = f"動能強勢(IC:{row['量化預測 IC']})，威科夫彈簧回檔套利。"
+            # ⚡ 結合該標的的「量化IC數值」與「即時新聞動態」生成獨立綜合摘要
+            news_snippet = str(row.get('消息面與基本面解讀', '動能穩健')).replace("即時消息摘要：", "").strip()
+            ai_reason = f"IC:{row['量化預測 IC']} | 新聞焦點：{news_snippet[:45]}"
 
             short_results.append({
                 "排名": f"#{idx+1}",
@@ -578,8 +579,9 @@ class QuantScreenerEngine:
             alloc_pct = f"{round(max(4.0, 15.0 - idx * 1.0), 1)}%"
             alloc_amt = round(capital * (float(alloc_pct.replace('%','')) / 100.0), 2)
             
-            # ⚡ 極簡一句話總結（不超過 15 字，無冗長廢話）
-            ai_reason = f"財務極佳(F:{row['Piotroski F']} Z:{row['Altman Z']})，護城河深厚。"
+            # ⚡ 結合該標的的「財務得分(F/Z)」與「即時新聞動態」生成獨立綜合摘要
+            news_snippet = str(row.get('消息面與基本面解讀', '體質健全')).replace("即時消息摘要：", "").strip()
+            ai_reason = f"F:{row['Piotroski F']} Z:{row['Altman Z']} | 新聞焦點：{news_snippet[:45]}"
 
             long_results.append({
                 "排名": f"#{idx+1}",
