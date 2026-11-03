@@ -540,33 +540,38 @@ class QuantScreenerEngine:
         if not api_key:
             return "⚠️ 未檢測到 API Key"
 
-        news_summary_text = "\n".join([f"- {n['title']}" for n in rss_news_list[:2]]) if rss_news_list else "暫無近期即時新聞。"
+        news_summary_text = "\n".join([f"- {n['title']}" for n in rss_news_list[:3]]) if rss_news_list else "暫無近期即時新聞。"
 
-        # 高密度、精簡版 Prompt：專業但嚴格控制 Token 消耗，避免逾時
+        # 包含新聞總結、趨勢預測、量化評判與操盤指引的完整模組
         prompt = f"""
-以華爾街量化資深操盤手視角，用繁體中文給出高資訊密度的專業戰情速報：
+以華爾街量化資深操盤手視角，用繁體中文給出結構豐富、兼具新聞總結與趨勢預測的深度戰情速報：
 - 標的：{stock_name} ({symbol})
-- 技術/威科夫：{tech_str}
-- 基本面/財務：{fundamental_str}
-- 最新新聞：
+- 技術與威科夫結構：{tech_str}
+- 基本面與財務狀況：{fundamental_str}
+- 最新財經新聞清單：
 {news_summary_text}
 
-格式嚴格依循以下三點（每點精煉短句，專業且不囉嗦）：
-1. **📰 消息催化**：(解讀新聞對情緒與基本面的核心影響)
-2. **📊 多維判定**：(結合財務與威科夫結構的強弱勢評估)
-3. **🎯 操盤指引**：(明確給出建倉區間、ATR 防守停損與目標價規劃)
+請嚴格按照以下四個模組輸出詳盡的專業分析：
+1. **📰 最近新聞總結與事件驅動**：
+   - 摘要近期關鍵新聞的核心焦點，並精準解讀市場資金的真實反應與情緒變化。
+2. **🔮 趨勢預測與短中線展望**：
+   - 結合新聞面催化與量化指標，預判該標的接下來幾週的價格走勢與潛在波動方向。
+3. **📊 量化基本面與技術面評判**：
+   - 評估財務健康度（如 F-Score/Altman Z）與威科夫微觀結構（如吸籌、洗盤或發散階段）。
+4. **🎯 具體操盤指引與風控規劃**：
+   - 給出明確的進場建倉區間、ATR 防守停損位以及中短線階段性目標規劃。
 """
         models = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
         headers = {"Content-Type": "application/json"}
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"maxOutputTokens": 350, "temperature": 0.2}
+            "generationConfig": {"maxOutputTokens": 750, "temperature": 0.25}
         }
 
         for model in models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
             try:
-                response = Session().post(url, headers=headers, json=payload, timeout=15)
+                response = Session().post(url, headers=headers, json=payload, timeout=20)
                 if response.status_code == 200:
                     res_json = response.json()
                     if "candidates" in res_json and len(res_json["candidates"]) > 0:
