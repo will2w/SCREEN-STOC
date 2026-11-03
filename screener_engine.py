@@ -239,9 +239,6 @@ class QuantScreenerEngine:
         return mapping.get(currency_code, currency_code + " ")
 
     def _calculate_real_fundamental_scores(self, ticker_obj, price):
-        """
-        從真實財報計算 Piotroski F-Score (9分制) 與 Altman Z-Score
-        """
         try:
             fin = ticker_obj.financials
             bs = ticker_obj.balance_sheet
@@ -268,7 +265,6 @@ class QuantScreenerEngine:
             total_assets = total_assets_row.iloc[0] if total_assets_row is not None and len(total_assets_row) > 0 else 1.0
             prev_assets = total_assets_row.iloc[1] if total_assets_row is not None and len(total_assets_row) > 1 else total_assets
 
-            # 1. Piotroski F-Score (真實財報 9 分制計算法)
             f_pts = 5
             if net_income_row is not None and len(net_income_row) > 0 and net_income_row.iloc[0] > 0:
                 f_pts += 1
@@ -284,7 +280,6 @@ class QuantScreenerEngine:
                     f_pts += 1
             f_score = int(max(2, min(9, f_pts)))
 
-            # 2. Altman Z-Score (實時資產負債表計算法)
             wc = working_cap_row.iloc[0] if working_cap_row is not None and len(working_cap_row) > 0 else total_assets * 0.25
             re = retained_row.iloc[0] if retained_row is not None and len(retained_row) > 0 else total_assets * 0.3
             ebit = ebit_row.iloc[0] if ebit_row is not None and len(ebit_row) > 0 else total_assets * 0.1
@@ -372,11 +367,9 @@ class QuantScreenerEngine:
                     "ATR 停損位": "N/A", "狀態": "不合格 (數據異常)"
                 }
 
-            # 1. 真實財報指標計算
             yf_ticker_obj = yf.Ticker(symbol, session=self.session)
             f_raw, z_raw = self._calculate_real_fundamental_scores(yf_ticker_obj, price)
 
-            # 2. 技術指標計算 (ATR 14)
             df['H-L'] = df['High'] - df['Low']
             df['H-PC'] = abs(df['High'] - df['Close'].shift(1))
             df['L-PC'] = abs(df['Low'] - df['Close'].shift(1))
@@ -387,21 +380,18 @@ class QuantScreenerEngine:
             vol_series = df['Volume'].tail(5).mean()
             recent_volume = float(vol_series) if not pd.isna(vol_series) else 50000.0
             
-            # 3. 風險與夏普比率實時運算 (Sharpe Ratio)
             daily_rets = df['Close'].pct_change().dropna()
             ret_std = daily_rets.std()
             if pd.isna(ret_std) or ret_std == 0:
                 ret_std = 0.02
             
-            risk_free_rate = 0.0425 # 實時美債基準
+            risk_free_rate = 0.0425
             annualized_sharpe = float((daily_rets.mean() * 252 - risk_free_rate) / (ret_std * np.sqrt(252))) if not pd.isna(daily_rets.mean()) else 1.0
             sharpe = round(max(-2.0, min(5.0, annualized_sharpe)), 2)
             
-            # 4. 量化預測 IC 計算 (動量因子結合宏觀信貸脈衝)
             returns_3m = float(df['Close'].iloc[-1] / df['Close'].iloc[-60] - 1) if len(df) >= 60 and df['Close'].iloc[-60] > 0 else 0.03
             ic_score = round(min(0.35, max(-0.15, returns_3m * 0.45 + 0.03)) * macro_multiplier, 3)
 
-            # 5. 綜合評分計量模型 (Composite Score)
             raw_score = (ic_score * 140.0 + max(-1.0, sharpe) * 12.0 + (f_raw / 9.0) * 30.0 + min(z_raw, 6.0) * 4.0)
             comp_score = round(max(0.0, min(100.0, raw_score + 25.0)), 1)
 
@@ -550,39 +540,33 @@ class QuantScreenerEngine:
         if not api_key:
             return "⚠️ 未檢測到 API Key"
 
-        news_summary_text = "\n".join([f"- {n['title']}" for n in rss_news_list[:3]]) if rss_news_list else "暫無近期即時新聞。"
+        news_summary_text = "\n".join([f"- {n['title']}" for n in rss_news_list[:2]]) if rss_news_list else "暫無近期即時新聞。"
 
+        # 高密度、精簡版 Prompt：專業但嚴格控制 Token 消耗，避免逾時
         prompt = f"""
-請以華爾街量化資深操盤手視角，用繁體中文對以下標的進行**深度、段落分明的詳盡情報拆解與操盤指引**：
+以華爾街量化資深操盤手視角，用繁體中文給出高資訊密度的專業戰情速報：
 - 標的：{stock_name} ({symbol})
-- 系統內部技術面與威科夫結構：{tech_str}
-- 系統內部基本面與財務解讀：{fundamental_str}
-- 最新抓取的 RSS 財經新聞：
+- 技術/威科夫：{tech_str}
+- 基本面/財務：{fundamental_str}
+- 最新新聞：
 {news_summary_text}
 
-請嚴格按照以下三個模組輸出豐富的詳細內容：
-1. **📰 消息面快訊與事件驅動深度解析**：
-   - 詳盡解讀近期 RSS 財經新聞中的關鍵事件背景、市場資金的真實反應。
-   - 分析該新聞事件對公司短期市場情緒與中長期基本面預期的實質催化效果。
-2. **📊 多維度基本與技術面解讀**：
-   - 結合真實財報數據（如 Piotroski F-Score 與 Altman Z 破產預警分數），評估其企業護城河與財務健全度。
-   - 解析威科夫微觀結構（如吸籌區間、Spring 洗盤或量價配合狀況）。
-3. **🎯 關鍵操盤點與風控指引（詳細佈局策略）**：
-   - **進場策略**：給出具體的理想建倉價位區間或右側突破確認條件。
-   - **防守支撐點**：結合 ATR 波動率數值與威科夫關鍵防守價位（如 Spring 彈簧低點），規劃嚴格的停損點。
-   - **獲利目標與階段規劃**：預估短中線的階段性目標價與分批停利邏輯。
+格式嚴格依循以下三點（每點精煉短句，專業且不囉嗦）：
+1. **📰 消息催化**：(解讀新聞對情緒與基本面的核心影響)
+2. **📊 多維判定**：(結合財務與威科夫結構的強弱勢評估)
+3. **🎯 操盤指引**：(明確給出建倉區間、ATR 防守停損與目標價規劃)
 """
         models = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
         headers = {"Content-Type": "application/json"}
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"maxOutputTokens": 950, "temperature": 0.3}
+            "generationConfig": {"maxOutputTokens": 350, "temperature": 0.2}
         }
 
         for model in models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
             try:
-                response = Session().post(url, headers=headers, json=payload, timeout=25)
+                response = Session().post(url, headers=headers, json=payload, timeout=15)
                 if response.status_code == 200:
                     res_json = response.json()
                     if "candidates" in res_json and len(res_json["candidates"]) > 0:
