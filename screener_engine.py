@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-QUANTUM ALPHA TERMINAL — 全量真實計量、技術指標與即時消息面 AI 綜合評估篩選引擎 (含 Gemini 智慧總結)
+QUANTUM ALPHA TERMINAL — 全量真實計量、技術指標與 Gemini 智慧消息面融合篩選引擎
 """
 
 import os
@@ -319,6 +319,46 @@ class QuantScreenerEngine:
         except Exception:
             return 5, 2.5
 
+    def _call_gemini_for_screening_evaluation(self, stock_name, symbol, ic, sharpe, f_score, altman_z, news_text):
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            return 0.0, "消息面平穩"
+
+        prompt = f"""
+作為華爾街量化資深操盤手，請評估以下股票的綜合多維度表現：
+- 股票：{stock_name} ({symbol})
+- 量化預測 IC: {ic}
+- 夏普比率: {sharpe}
+- Piotroski F-Score: {f_score}/9
+- Altman Z-Score: {altman_z}
+- 即時新聞頭條：{news_text}
+
+請嚴格回傳一個 JSON 物件，包含兩個欄位：
+1. "sentiment_bonus": 數字，範圍介於 -5.0 到 +8.0 之間（根據即時新聞對該股是利多還是利空進行評分加減）。
+2. "ai_summary": 字串，限 30 字以內的精煉中文評語，說明為何推薦或避開。
+回傳格式範例: {{"sentiment_bonus": 4.5, "ai_summary": "財報超預期且強勢突破，機構買盤積極。"}}
+"""
+        models = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"maxOutputTokens": 200, "temperature": 0.2, "responseMimeType": "application/json"}
+        }
+
+        for model in models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            try:
+                response = Session().post(url, headers=headers, json=payload, timeout=12)
+                if response.status_code == 200:
+                    res_json = response.json()
+                    if "candidates" in res_json and len(res_json["candidates"]) > 0:
+                        text_res = res_json['candidates'][0]['content']['parts'][0]['text']
+                        parsed = json.loads(text_res)
+                        return float(parsed.get("sentiment_bonus", 0.0)), str(parsed.get("ai_summary", "消息面平穩"))
+            except Exception:
+                continue
+        return 0.0, "消息面平穩"
+
     def _process_single_stock(self, stock, macro_multiplier):
         symbol = self.get_ticker_symbol(stock)
         if not symbol:
@@ -379,7 +419,6 @@ class QuantScreenerEngine:
                 }
 
             live_news_text = self._fetch_live_news_summary(stock)
-            news_sentiment_bonus = 4.0 if any(k in live_news_text.lower() for k in ["surge", "jump", "beat", "growth", "rally", "record", "buy", "up", "bull", "profit", "launch"]) else 0.0
 
             yf_ticker_obj = yf.Ticker(symbol, session=self.session)
             f_raw, z_raw = self._calculate_real_fundamental_scores(yf_ticker_obj, price)
@@ -406,7 +445,11 @@ class QuantScreenerEngine:
             returns_3m = float(df['Close'].iloc[-1] / df['Close'].iloc[-60] - 1) if len(df) >= 60 and df['Close'].iloc[-60] > 0 else 0.03
             ic_score = round(min(0.35, max(-0.15, returns_3m * 0.45 + 0.03)) * macro_multiplier, 3)
 
-            raw_score = (ic_score * 140.0 + max(-1.0, sharpe) * 12.0 + (f_raw / 9.0) * 30.0 + min(z_raw, 6.0) * 4.0 + news_sentiment_bonus)
+            sentiment_bonus, ai_screening_summary = self._call_gemini_for_screening_evaluation(
+                stock_name=stock, symbol=symbol, ic=ic_score, sharpe=sharpe, f_score=f_raw, altman_z=z_raw, news_text=live_news_text
+            )
+
+            raw_score = (ic_score * 140.0 + max(-1.0, sharpe) * 12.0 + (f_raw / 9.0) * 30.0 + min(z_raw, 6.0) * 4.0 + sentiment_bonus)
             comp_score = round(max(0.0, min(100.0, raw_score + 25.0)), 1)
 
             reasons = []
@@ -422,7 +465,7 @@ class QuantScreenerEngine:
                     "不合格原因": "；".join(reasons), "量化預測 IC": ic_score, "Sharpe Ratio": sharpe,
                     "Piotroski F": f"{f_raw}/9", "Altman Z": z_raw, 
                     "技術面分析 (威科夫/ATR)": "流動性枯竭，短線偏弱，建議落袋或避開",
-                    "消息面與基本面解讀": f"即時消息摘要：{live_news_text[:120]}",
+                    "消息面與基本面解讀": ai_screening_summary,
                     "建議倉位比例": "0%", "建議配置金額 (€)": 0.0, "ATR 停損位": f"{curr_symbol}{max(0, price - 2 * atr):,.2f}",
                     "狀態": "不合格 (流動性不足)"
                 }
@@ -430,23 +473,18 @@ class QuantScreenerEngine:
             if comp_score >= 82:
                 eval_result, investment_rec = "極優 (Alpha 顯著)", "強力買進 (Strong Buy)"
                 tech_analysis = "威科夫 Phase C (Spring 彈簧洗盤確認) - 主力吸籌完成，量價齊揚。"
-                fundamental_news = f"{live_news_text[:120]}"
             elif comp_score >= 70:
                 eval_result, investment_rec = "優良 (多頭排列)", "逢低吸納 (Accumulate)"
                 tech_analysis = "威科夫 Phase B/C (箱體震盪蓄勢) - 回測支撐帶量守住。"
-                fundamental_news = f"{live_news_text[:120]}"
             elif comp_score >= 58:
                 eval_result, investment_rec = "中立 (震盪築底)", "區間操作 (Range Trade)"
                 tech_analysis = "威科夫 Phase B (橫向累積) - 均線糾結，等待方向選擇。"
-                fundamental_news = f"{live_news_text[:120]}"
             elif comp_score >= 45:
                 eval_result, investment_rec = "偏弱 (動能不足)", "減碼觀望 (Reduce / Watch)"
                 tech_analysis = "威科夫 Phase D (弱勢反彈遭逢賣壓) - 上方均線反壓重。"
-                fundamental_news = f"{live_news_text[:120]}"
             else:
                 eval_result, investment_rec = "風險 (空頭排列)", "強力賣出 / 避開 (Sell / Avoid)"
                 tech_analysis = "威科夫 Phase E (下降趨勢派發) - 跌破重要支撐。"
-                fundamental_news = f"{live_news_text[:120]}"
 
             return {
                 "股票名稱": stock, "股票代碼": symbol, "最新現價": f"{curr_symbol}{price:,.2f}", "raw_price": price,
@@ -454,7 +492,7 @@ class QuantScreenerEngine:
                 "不合格原因": "無 (完全符合量化與流動性標準)", "量化預測 IC": ic_score, "Sharpe Ratio": sharpe,
                 "Piotroski F": f"{f_raw}/9", "Altman Z": z_raw, 
                 "技術面分析 (威科夫/ATR)": tech_analysis,
-                "消息面與基本面解讀": fundamental_news,
+                "消息面與基本面解讀": ai_screening_summary,
                 "建議倉位比例": "0%", "建議配置金額 (€)": 0.0, 
                 "ATR 停損位": f"{curr_symbol}{max(0, price - 2 * atr):,.2f}",
                 "狀態": "通過 (可交易)"
@@ -464,7 +502,7 @@ class QuantScreenerEngine:
                 "股票名稱": stock, "股票代碼": symbol, "最新現價": "N/A", "raw_price": -1.0,
                 "貨幣": "USD", "綜合評分": 0.0, "評估結果": "不合格", "投資建議": "暫時剔除 (Exclude)",
                 "不合格原因": f"例外錯誤 ({str(e)})", "量化預測 IC": 0.0, "Sharpe Ratio": 0.0,
-                "Piotroski F": "N/A", "Altman Z": z_raw, 
+                "Piotroski F": "N/A", "Altman Z": 0.0, 
                 "技術面分析 (威科夫/ATR)": "計算例外", "消息面與基本面解讀": "系統內部錯誤",
                 "建議倉位比例": "0%", "建議配置金額 (€)": 0.0, "ATR 停損位": "N/A", "狀態": "不合格 (例外錯誤)"
             }
@@ -474,7 +512,7 @@ class QuantScreenerEngine:
         macro_multiplier *= (1.0 + m2_gap * 0.03)
         
         results = []
-        max_workers = min(6, max(2, len(selected_stocks)))
+        max_workers = min(4, max(2, len(selected_stocks)))
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_stock = {
                 executor.submit(self._process_single_stock, stock, macro_multiplier): stock 
@@ -518,38 +556,6 @@ class QuantScreenerEngine:
         passed_df = pd.DataFrame(final_passed)
         return passed_df, failed_df
 
-    def _call_gemini_for_table_summary(self, stock_list_info, track_type="short"):
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            return {}
-
-        prompt = f"""
-作為華爾街量化資深操盤手，請為以下 Top 10 股票產出「一句話智慧推薦原因」（每句限 20 字以內，繁體中文）。
-需綜合考量其量化預測 IC、技術結構與即時消息。
-請嚴格回傳標準 JSON 格式的字典，key 為股票代碼（symbol），value 為精煉的一句話總結。不需額外說明。
-資料清單：
-{json.dumps(stock_list_info, ensure_ascii=False)}
-"""
-        models = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
-        headers = {"Content-Type": "application/json"}
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"maxOutputTokens": 800, "temperature": 0.2, "responseMimeType": "application/json"}
-        }
-
-        for model in models:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-            try:
-                response = Session().post(url, headers=headers, json=payload, timeout=20)
-                if response.status_code == 200:
-                    res_json = response.json()
-                    if "candidates" in res_json and len(res_json["candidates"]) > 0:
-                        text_res = res_json['candidates'][0]['content']['parts'][0]['text']
-                        return json.loads(text_res)
-            except Exception:
-                continue
-        return {}
-
     def get_dual_track_top10(self, df_passed, capital=100000):
         if df_passed.empty:
             return pd.DataFrame(), pd.DataFrame()
@@ -561,19 +567,6 @@ class QuantScreenerEngine:
             df_short = df_short.sort_values(by='short_score', ascending=False)
         
         top10_short = df_short.head(10).reset_index(drop=True)
-        
-        # 準備批次讓 Gemini 總結的短線資料
-        short_payload_list = []
-        for idx, row in top10_short.iterrows():
-            short_payload_list.append({
-                "symbol": row['股票代碼'],
-                "name": row['股票名稱'],
-                "ic": row['量化預測 IC'],
-                "news": row['消息面與基本面解讀'][:150]
-            })
-        
-        gemini_short_reasons = self._call_gemini_for_table_summary(short_payload_list, "short")
-
         short_results = []
         for idx, row in top10_short.iterrows():
             raw_p = row['raw_price'] if row['raw_price'] > 0 else 100.0
@@ -585,9 +578,7 @@ class QuantScreenerEngine:
             alloc_pct = f"{round(max(2.0, 12.0 - idx * 0.8), 1)}%"
             alloc_amt = round(capital * (float(alloc_pct.replace('%','')) / 100.0), 2)
             
-            # 優先採用 Gemini 批次智慧總結，若未返回則退回本地精簡格式
-            sym = row['股票代碼']
-            ai_reason = gemini_short_reasons.get(sym, f"動能強勢(IC:{row['量化預測 IC']})，威科夫回檔套利。")
+            ai_reason = row.get('消息面與基本面解讀', f"動能強勢(IC:{row['量化預測 IC']})，威科夫回檔套利。")
 
             short_results.append({
                 "排名": f"#{idx+1}",
@@ -614,19 +605,6 @@ class QuantScreenerEngine:
         df_long = df_long.sort_values(by='long_score', ascending=False)
 
         top10_long = df_long.head(10).reset_index(drop=True)
-        
-        long_payload_list = []
-        for idx, row in top10_long.iterrows():
-            long_payload_list.append({
-                "symbol": row['股票代碼'],
-                "name": row['股票名稱'],
-                "f_score": row['Piotroski F'],
-                "altman_z": row['Altman Z'],
-                "news": row['消息面與基本面解讀'][:150]
-            })
-            
-        gemini_long_reasons = self._call_gemini_for_table_summary(long_payload_list, "long")
-
         long_results = []
         for idx, row in top10_long.iterrows():
             raw_p = row['raw_price'] if row['raw_price'] > 0 else 100.0
@@ -637,8 +615,7 @@ class QuantScreenerEngine:
             alloc_pct = f"{round(max(4.0, 15.0 - idx * 1.0), 1)}%"
             alloc_amt = round(capital * (float(alloc_pct.replace('%','')) / 100.0), 2)
             
-            sym = row['股票代碼']
-            ai_reason = gemini_long_reasons.get(sym, f"財務極佳(F:{row['Piotroski F']} Z:{row['Altman Z']})，護城河深厚。")
+            ai_reason = row.get('消息面與基本面解讀', f"財務極佳(F:{row['Piotroski F']} Z:{row['Altman Z']})，護城河深厚。")
 
             long_results.append({
                 "排名": f"#{idx+1}",
@@ -709,15 +686,16 @@ class QuantScreenerEngine:
 """
         models = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
         headers = {"Content-Type": "application/json"}
+        # ⚡ 將 maxOutputTokens 提高至 1500，timeout 提高至 30 秒，確保長文本輸出完整
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"maxOutputTokens": 750, "temperature": 0.25}
+            "generationConfig": {"maxOutputTokens": 1500, "temperature": 0.25}
         }
 
         for model in models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
             try:
-                response = Session().post(url, headers=headers, json=payload, timeout=20)
+                response = Session().post(url, headers=headers, json=payload, timeout=30)
                 if response.status_code == 200:
                     res_json = response.json()
                     if "candidates" in res_json and len(res_json["candidates"]) > 0:
