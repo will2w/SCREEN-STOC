@@ -14,7 +14,7 @@ import urllib.parse
 from screener_engine import QuantScreenerEngine
 
 st.set_page_config(
-    page_title="BANSHEE QUEEN // INSTITUTIONAL QUANTITATIVE TERMINAL",
+    page_title="INSTITUTIONAL QUANTITATIVE TERMINAL",
     page_icon="👑",
     layout="wide"
 )
