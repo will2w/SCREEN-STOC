@@ -2,7 +2,7 @@
 """
 app.py
 ------
-QUANTUM ALPHA TERMINAL — 現代多維度量化股票篩選與決策系統 (含 AI 新聞聯動雙軌戰情室)
+QUANTUM ALPHA TERMINAL // WORLD OF WARCRAFT & CYBERPUNK EPIC EDITION
 """
 
 import streamlit as st
@@ -14,129 +14,165 @@ import urllib.parse
 from screener_engine import QuantScreenerEngine
 
 st.set_page_config(
-    page_title="QUANTUM ALPHA TERMINAL // CYBERNETIC v2026",
-    page_icon="⚡",
+    page_title="AZEROTH ALPHA TERMINAL // EPIC WARCRAFT EDITION",
+    page_icon="🛡️",
     layout="wide"
 )
 
 st.markdown("""
 <style>
+    /* 核心背景：魔獸黑暗之門與深淵黑曜石風格 */
     .stApp {
-        background-color: #030712;
+        background-color: #050508;
         background-image: 
-            radial-gradient(circle at 50% 0%, rgba(6, 182, 212, 0.15) 0%, transparent 60%),
-            linear-gradient(rgba(6, 182, 212, 0.04) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(6, 182, 212, 0.04) 1px, transparent 1px);
-        background-size: 100% 100%, 30px 30px, 30px 30px;
-        color: #F3F4F6;
-        font-family: 'Share Tech Mono', 'Courier New', monospace, sans-serif;
+            radial-gradient(circle at 50% 0%, rgba(88, 28, 135, 0.25) 0%, transparent 70%),
+            radial-gradient(circle at 10% 90%, rgba(6, 182, 212, 0.15) 0%, transparent 50%),
+            linear-gradient(rgba(217, 119, 6, 0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(217, 119, 6, 0.03) 1px, transparent 1px);
+        background-size: 100% 100%, 100% 100%, 40px 40px, 40px 40px;
+        color: #E2E8F0;
+        font-family: 'Cinzel', 'Segoe UI', 'Courier New', monospace, sans-serif;
     }
+
+    /* 史詩標題：古金石與薩滿電弧藍漸層 */
     .cyber-header {
         font-size: 3rem;
         font-weight: 900;
-        background: linear-gradient(135deg, #22D3EE 0%, #818CF8 40%, #E879F9 80%, #34D399 100%);
+        background: linear-gradient(135deg, #F59E0B 0%, #38BDF8 35%, #A855F7 70%, #10B981 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        text-shadow: 0 0 35px rgba(34, 211, 238, 0.6), 0 0 70px rgba(232, 121, 249, 0.3);
+        text-shadow: 0 0 30px rgba(56, 189, 248, 0.4), 0 0 60px rgba(168, 85, 247, 0.2);
         margin-bottom: 0.1rem;
-        letter-spacing: 0.05em;
+        letter-spacing: 0.08em;
         text-transform: uppercase;
     }
+
+    /* 副標題裝飾線 */
     .cyber-sub {
-        font-size: 1rem;
-        color: #06B6D4;
-        font-weight: 600;
+        font-size: 1.05rem;
+        color: #38BDF8;
+        font-weight: 700;
         margin-bottom: 2rem;
-        border-left: 4px solid #22D3EE;
-        padding-left: 0.75rem;
-        background: linear-gradient(90deg, rgba(6, 182, 212, 0.15) 0%, transparent 100%);
-        padding-top: 0.3rem;
-        padding-bottom: 0.3rem;
-        letter-spacing: 0.1em;
-        text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
+        border-left: 4px solid #F59E0B;
+        padding-left: 0.85rem;
+        background: linear-gradient(90deg, rgba(245, 158, 11, 0.15) 0%, transparent 100%);
+        padding-top: 0.4rem;
+        padding-bottom: 0.4rem;
+        letter-spacing: 0.12em;
+        text-shadow: 0 0 12px rgba(56, 189, 248, 0.6);
     }
+
+    /* 側邊欄：暗黑符文法陣風格 */
     [data-testid="stSidebar"] {
-        background-color: rgba(3, 7, 18, 0.92);
+        background-color: rgba(10, 10, 18, 0.95);
         backdrop-filter: blur(16px);
-        border-right: 1px solid rgba(34, 211, 238, 0.3);
-        box-shadow: 5px 0 30px rgba(0, 0, 0, 0.8);
+        border-right: 1px solid rgba(245, 158, 11, 0.35);
+        box-shadow: 8px 0 35px rgba(0, 0, 0, 0.9);
     }
+
+    /* 數據表格：黑曜石框體 */
     div.stDataFrame {
-        border: 1px solid rgba(34, 211, 238, 0.35);
-        border-radius: 0.5rem;
-        background-color: rgba(10, 15, 30, 0.85);
+        border: 1px solid rgba(56, 189, 248, 0.4);
+        border-radius: 0.6rem;
+        background-color: rgba(12, 14, 24, 0.9);
         backdrop-filter: blur(12px);
-        padding: 0.5rem;
-        box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.9), 0 0 25px rgba(34, 211, 238, 0.12);
+        padding: 0.6rem;
+        box-shadow: 0 12px 35px -5px rgba(0, 0, 0, 0.95), 0 0 25px rgba(56, 189, 248, 0.15);
     }
+
+    /* 分頁標籤：史詩能量條風格 */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 12px;
-        background-color: rgba(10, 15, 30, 0.95);
-        padding: 8px;
-        border-radius: 0.5rem;
-        border: 1px solid rgba(34, 211, 238, 0.3);
+        gap: 10px;
+        background-color: rgba(12, 14, 24, 0.95);
+        padding: 10px;
+        border-radius: 0.6rem;
+        border: 1px solid rgba(245, 158, 11, 0.3);
         backdrop-filter: blur(10px);
     }
     .stTabs [data-baseweb="tab"] {
-        height: 44px;
+        height: 46px;
         background-color: transparent;
         border-radius: 4px;
-        color: #9CA3AF;
+        color: #94A3B8;
         font-weight: 700;
         border: none;
-        letter-spacing: 0.05em;
+        letter-spacing: 0.06em;
         transition: all 0.3s ease;
     }
     .stTabs [data-baseweb="tab"]:hover {
-        color: #22D3EE;
-        background-color: rgba(34, 211, 238, 0.1);
-        text-shadow: 0 0 10px rgba(34, 211, 238, 0.7);
+        color: #38BDF8;
+        background-color: rgba(56, 189, 248, 0.12);
+        text-shadow: 0 0 12px rgba(56, 189, 248, 0.8);
     }
     .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, #0891B2 0%, #4F46E5 50%, #9333EA 100%);
-        color: #FFFFFF !important;
-        box-shadow: 0 0 25px rgba(34, 211, 238, 0.7);
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: linear-gradient(135deg, #B45309 0%, #1E3A8A 50%, #6B21A8 100%);
+        color: #F8FAFC !important;
+        box-shadow: 0 0 30px rgba(245, 158, 11, 0.5), inset 0 0 10px rgba(56, 189, 248, 0.6);
+        border: 1px solid rgba(245, 158, 11, 0.6);
     }
+
+    /* 按鈕：史詩烈焰按鈕 */
     .stButton button[kind="primary"] {
-        background: linear-gradient(135deg, #06B6D4 0%, #6366F1 50%, #D946EF 100%);
-        border: 1px solid rgba(255, 255, 255, 0.3);
+        background: linear-gradient(135deg, #D97706 0%, #2563EB 50%, #7E22CE 100%);
+        border: 1px solid rgba(245, 158, 11, 0.6);
         color: white;
-        font-weight: 800;
-        letter-spacing: 0.1em;
+        font-weight: 900;
+        letter-spacing: 0.12em;
         border-radius: 0.4rem;
-        box-shadow: 0 0 30px rgba(6, 182, 212, 0.5);
+        box-shadow: 0 0 35px rgba(217, 119, 6, 0.6);
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         text-transform: uppercase;
     }
     .stButton button[kind="primary"]:hover {
-        background: linear-gradient(135deg, #0891B2 0%, #4F46E5 50%, #C026D3 100%);
-        box-shadow: 0 0 45px rgba(217, 70, 239, 0.8), 0 0 20px rgba(6, 182, 212, 0.8);
+        background: linear-gradient(135deg, #F59E0B 0%, #3B82F6 50%, #9333EA 100%);
+        box-shadow: 0 0 50px rgba(56, 189, 248, 0.8), 0 0 25px rgba(245, 158, 11, 0.9);
         transform: translateY(-2px) scale(1.02);
     }
+
+    /* 展開面板與數據指標 */
     div.streamlit-expanderHeader {
-        background-color: rgba(10, 15, 30, 0.9);
-        border: 1px solid rgba(34, 211, 238, 0.3);
+        background-color: rgba(15, 23, 42, 0.9);
+        border: 1px solid rgba(56, 189, 248, 0.35);
         border-radius: 0.4rem;
-        color: #F3F4F6;
+        color: #F8FAFC;
         font-weight: 700;
     }
     [data-testid="stMetric"] {
-        background-color: rgba(10, 15, 30, 0.85);
-        border: 1px solid rgba(34, 211, 238, 0.25);
+        background-color: rgba(15, 23, 42, 0.85);
+        border: 1px solid rgba(245, 158, 11, 0.3);
         padding: 15px;
         border-radius: 0.5rem;
-        box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+        box-shadow: 0 0 25px rgba(0, 0, 0, 0.85);
     }
     [data-testid="stMetricValue"] {
-        color: #22D3EE !important;
-        text-shadow: 0 0 10px rgba(34, 211, 238, 0.5);
+        color: #F59E0B !important;
+        text-shadow: 0 0 12px rgba(245, 158, 11, 0.6);
+    }
+
+    /* 🛡️ 分數變化彩色戰利品標籤 (Buff / Debuff Badge) */
+    .buff-badge {
+        color: #4ADE80;
+        background-color: rgba(34, 197, 94, 0.15);
+        border: 1px solid rgba(34, 197, 94, 0.4);
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-weight: 800;
+        text-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
+    }
+    .debuff-badge {
+        color: #F87171;
+        background-color: rgba(239, 68, 68, 0.15);
+        border: 1px solid rgba(239, 68, 68, 0.4);
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-weight: 800;
+        text-shadow: 0 0 8px rgba(248, 113, 113, 0.6);
     }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="cyber-header">⚡ QUANTUM ALPHA TERMINAL</div>', unsafe_allow_html=True)
-st.markdown('<div class="cyber-sub">[SYSTEM_ACTIVE] // GLOBAL QUANTITATIVE SCREENING & DYNAMIC ASSET ALLOCATION // 2026 CYBERNETIC WARFARE EDITION</div>', unsafe_allow_html=True)
+st.markdown('<div class="cyber-header">🛡️ AZEROTH ALPHA TERMINAL</div>', unsafe_allow_html=True)
+st.markdown('<div class="cyber-sub">[EPIC_WARCRAFT_ACTIVE] // REAL-TIME MESH QUANTITATIVE SCREENING & MAGITECH ALLOCATION // v2026 MYTHIC EDITION</div>', unsafe_allow_html=True)
 
 engine = QuantScreenerEngine()
 default_watchlist = engine.watchlist
@@ -145,8 +181,8 @@ market_state = engine.get_current_market_state()
 default_impulse = market_state["credit_impulse"]
 default_m2 = market_state["m2_gap"]
 
-st.sidebar.header("🎛️ 戰情室控制台")
-st.sidebar.info(f"🌐 實時宏觀同步 ({market_state['sync_date']}): 10年美債 {market_state['benchmark_tnx']}%")
+st.sidebar.header("⚔️ 遠征軍戰情控制台")
+st.sidebar.info(f"🌐 艾澤拉斯宏觀同步 ({market_state['sync_date']}): 10年美債 {market_state['benchmark_tnx']}%")
 
 impulse_options = [
     "擴張期 (Expansion - 流動性充沛)", 
@@ -156,7 +192,7 @@ impulse_options = [
 default_impulse_idx = impulse_options.index(default_impulse) if default_impulse in impulse_options else 0
 
 credit_impulse = st.sidebar.selectbox(
-    "1. 信貸脈衝狀態 (Credit Impulse)", 
+    "1. 遠征信貸脈衝 (Credit Impulse)", 
     impulse_options, 
     index=default_impulse_idx
 )
@@ -167,7 +203,7 @@ m2_gap = st.sidebar.slider(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("#### 📁 股票池來源與輸入模式")
+st.sidebar.markdown("#### 📁 戰利品清單與來源")
 
 watchlist_source = st.sidebar.radio(
     "選擇股票池來源", 
@@ -225,19 +261,19 @@ else:
 
 st.sidebar.markdown("---")
 kelly_mode = st.sidebar.selectbox(
-    "3. 資金控管與頭寸模型", 
-    ["四分之一凱利 (0.25 f* - 機構推薦)", "半凱利 (0.5 f*)", "ATR 波動率目標化 (ATR Sizing)"], 
+    "3. 裝備頭寸與凱利模型", 
+    ["四分之一凱利 (0.25 f* - 史詩推薦)", "半凱利 (0.5 f*)", "ATR 波動率目標化 (ATR Sizing)"], 
     index=0
 )
 
 total_capital = st.sidebar.number_input(
-    "總投資資本 (€ / $)", 
+    "總冒險資金 (€ / $)", 
     value=100000, 
     step=10000
 )
 
 st.sidebar.markdown("---")
-run_btn = st.sidebar.button("⚡ 啟動量子量化篩選與投組構建", type="primary", use_container_width=True)
+run_btn = st.sidebar.button("⚔️ 啟動史詩量化遠征與投組鍛造", type="primary", use_container_width=True)
 
 @st.cache_data(ttl=1800)
 def fetch_stock_rss_news(symbol_or_name):
@@ -262,11 +298,11 @@ if run_btn:
         progress_bar = st.progress(0)
         status_text = st.empty()
         
-        status_text.text("⚡ [01/03] 建立量子安全連線、同步全球宏觀與實時流動性狀態...")
+        status_text.text("⚔️ [01/03] 正在與奧格瑪與暴風城伺服器建立法力連結、同步宏觀流動性...")
         progress_bar.progress(25)
         time.sleep(0.2)
         
-        status_text.text("🚀 [02/03] 執行多維度量化引擎、即時 RSS 消息面融合與真實財報運算...")
+        status_text.text("🚀 [02/03] 啟動多維度量化引擎、解析 RSS 戰報與威科夫神話結構...")
         progress_bar.progress(60)
         
         df_res, df_unqualified = engine.run_screening_with_unqualified(
@@ -277,7 +313,7 @@ if run_btn:
             method=kelly_mode
         )
         
-        status_text.text("💎 [03/03] 計算 Sharpe、IC 分數與 100% 歸一化動態頭寸配置...")
+        status_text.text("💎 [03/03] 計算神話 Sharpe、IC 分數與 100% 歸一化動態頭寸配置...")
         progress_bar.progress(90)
         time.sleep(0.2)
         
@@ -292,7 +328,7 @@ if run_btn:
             st.session_state['m2_gap'] = m2_gap
             
             progress_bar.progress(100)
-            status_text.text("✨ 量子量化全景篩選與 Portfolio Top 投組建構完畢！")
+            status_text.text("✨ 史詩量化遠征與 Portfolio Top 投組鍛造完畢！")
             time.sleep(0.3)
             
             progress_bar.empty()
@@ -304,10 +340,10 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
     df_unqualified = st.session_state['df_unqualified']
     
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("宏觀信貸脈衝 (實時)", st.session_state['credit_impulse'].split()[0], f"美債 {market_state['benchmark_tnx']}%")
-    col2.metric("超額 M2 剪刀差", f"+{st.session_state['m2_gap']}%", "動態估值驅動")
-    col3.metric("評估合格標的", f"{len(df_res)} 檔", "多因子量化評分通過")
-    col4.metric("未通過 / 遭剔除", f"{len(df_unqualified)} 檔", "流動性或體質未達標")
+    col1.metric("遠征信貸脈衝 (實時)", st.session_state['credit_impulse'].split()[0], f"美債 {market_state['benchmark_tnx']}%")
+    col2.metric("超額 M2 剪刀差", f"+{st.session_state['m2_gap']}%", "神話法力驅動")
+    col3.metric("評估合格標的", f"{len(df_res)} 檔", "多因子量化試煉通過")
+    col4.metric("未通過 / 遭剔除", f"{len(df_unqualified)} 檔", "流動性不足遭到擊殺")
     
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📊 合格全景量化清單",
@@ -339,7 +375,7 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
         col_t1, col_t2 = st.columns([3, 1])
         with col_t2:
             total_top15_amt = top15_df['建議配置金額 (€)'].sum() if '建議配置金額 (€)' in top15_df.columns else 0.0
-            st.metric("Top 15 總配置金額", f"€ {total_top15_amt:,.2f}", f"佔總資本 {round(total_top15_amt/total_capital*100, 1)}%")
+            st.metric("Top 15 總配置金額", f"€ {total_top15_amt:,.2f}", f"佔總資金 {round(total_top15_amt/total_capital*100, 1)}%")
             
         st.dataframe(top15_display, use_container_width=True, height=550)
         
@@ -355,14 +391,14 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
             fig_top15.update_layout(
                 plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)',
-                font_color='#F3F4F6',
-                title_font_color='#22D3EE'
+                font_color='#F8FAFC',
+                title_font_color='#F59E0B'
             )
             st.plotly_chart(fig_top15, use_container_width=True)
 
     with tab4:
         st.markdown("### ⚡ TOP 10 短線動能操作 vs TOP 10 中長線價值佈局雙軌戰情室")
-        st.markdown("結合**量化價格要素**、**即時 RSS 財經新聞**與 **Gemini AI 智慧總結**，為您完整展開短線與中長線的精準操盤指引。")
+        st.markdown("結合**量化價格要素**、**即時 RSS 財經戰報**與 **Gemini AI 智慧總結**，為您完整展開短線與中長線的精準操盤指引。")
         
         df_short_top10, df_long_top10 = engine.get_dual_track_top10(df_res, capital=total_capital)
         
@@ -403,8 +439,8 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
             fig_pie.update_layout(
                 plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)',
-                font_color='#F3F4F6',
-                title_font_color='#22D3EE'
+                font_color='#F8FAFC',
+                title_font_color='#F59E0B'
             )
             st.plotly_chart(fig_pie, use_container_width=True)
             
@@ -428,7 +464,13 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
             if not sub_df.empty:
                 st.markdown(f"#### 🔥 【{rec}】TOP 5 精選標的 (共 {len(sub_df)} 檔)")
                 for idx, row in sub_df.iterrows():
-                    with st.expander(f"📌 {row['股票名稱']} ({row['股票代碼']}) — 現價: {row['最新現價']} | 綜合評分: {row['綜合評分']}分 (Δ:{row['分數變化 (Δ)']}) | 建議: {row['投資建議']}"):
+                    # 🛡️ 根據分數變化（Δ）動態渲染魔獸風格的 Buff（綠）與 Debuff（紅）徽章
+                    diff_val_str = str(row['分數變化 (Δ)'])
+                    is_positive = not diff_val_str.startswith("-")
+                    badge_class = "buff-badge" if is_positive else "debuff-badge"
+                    delta_html = f'<span class="{badge_class}">Δ {diff_val_str}</span>'
+
+                    with st.expander(f"📌 {row['股票名稱']} ({row['股票代碼']}) — 現價: {row['最新現價']} | 綜合評分: {row['綜合評分']}分 ({delta_html}) | 建議: {row['投資建議']}", expanded=False):
                         ca, cb, cc, cd = st.columns(4)
                         ca.metric("評估結果", row['評估結果'])
                         cb.metric("夏普比率 (Sharpe)", row['Sharpe Ratio'])
@@ -436,7 +478,7 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
                         cd.metric("消息面分數", row['消息面分數'])
                         
                         st.markdown(f"""
-                        * **量化預測 IC**: `{row['量化預測 IC']}` | **上一版基準分**: `{row['上一版純量化分']}`
+                        * **量化預測 IC**: `{row['量化預測 IC']}` | **上一版純量化分**: `{row['上一版純量化分']}`
                         * **建議倉位配置**: `{row['建議倉位比例']}` (約 `{row['建議配置金額 (€)']:,} €`)
                         * **📊 技術面分析 (威科夫結構與 ATR)**: `{row['技術面分析 (威科夫/ATR)']}`
                         """)
@@ -470,4 +512,4 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
                 )
                 st.markdown(ai_report)
 else:
-    st.info("👈 請在左側側邊欄點擊「⚡ 啟動量子量化篩選與投組構建」按鈕，展開專業的賽博未來風量化決策終端。")
+    st.info("👈 請在左側側邊欄點擊「⚔️ 啟動史詩量化遠征與投組鍛造」按鈕，展開專業的魔獸風格量化決策終端。")
