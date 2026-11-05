@@ -58,7 +58,7 @@ class QuantScreenerEngine:
             elif os.path.exists(self.watchlist_path):
                 df = pd.read_excel(self.watchlist_path, sheet_name="Watchlist Stocks")
             else:
-                return ["NVIDIA", "E.on", "BASF", "JinkoSolar (ADR)"]
+                return ["NVIDIA", "E.on", "BASF", "AeroVironment"]
             
             self.dynamic_symbol_map = {}
             name_col, sym_col = None, None
@@ -85,7 +85,7 @@ class QuantScreenerEngine:
             return df.iloc[:, 0].dropna().astype(str).str.strip().tolist()
         except Exception:
             self.dynamic_symbol_map = {}
-            return ["NVIDIA", "E.on", "BASF", "JinkoSolar (ADR)"]
+            return ["NVIDIA", "E.on", "BASF", "AeroVironment"]
 
     def get_current_market_state(self):
         try:
@@ -321,31 +321,45 @@ class QuantScreenerEngine:
 
     def _calculate_technical_indicators(self, df):
         """⚡ 動態計算技術指標（RSI, SMA20/50, ATR 與威科夫結構）"""
+        rsi14 = 50.0
+        atr14 = 1.0
+        wyckoff_phase = "Phase B 震盪蓄勢"
+        sma20 = 0.0
+        sma50 = 0.0
         try:
+            if df is None or df.empty or 'Close' not in df.columns:
+                return wyckoff_phase, atr14, rsi14, sma20, sma50
+            
             close = df['Close']
-            high = df['High']
-            low = df['Low']
-            volume = df['Volume']
+            high = df['High'] if 'High' in df.columns else close
+            low = df['Low'] if 'Low' in df.columns else close
+            volume = df['Volume'] if 'Volume' in df.columns else pd.Series([100000]*len(close), index=close.index)
 
-            sma20 = float(close.rolling(window=20).mean().iloc[-1]) if len(close) >= 20 else float(close.mean())
-            sma50 = float(close.rolling(window=50).mean().iloc[-1]) if len(close) >= 50 else sma20
             curr_price = float(close.iloc[-1])
+            sma20 = float(close.rolling(window=20).mean().iloc[-1]) if len(close) >= 20 else curr_price
+            sma50 = float(close.rolling(window=50).mean().iloc[-1]) if len(close) >= 50 else sma20
 
             delta = close.diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
             rs = gain / loss.replace(0, 0.001)
-            rsi14 = float((100 - (100 / (1 + rs))).iloc[-1]) if not rs.empty else 50.0
+            if not rs.empty and not pd.isna(rs.iloc[-1]):
+                rsi14 = float(100 - (100 / (1 + rs.iloc[-1])))
 
-            df['H-L'] = high - low
-            df['H-PC'] = abs(high - close.shift(1))
-            df['L-PC'] = abs(low - close.shift(1))
-            df['TR'] = df[['H-L', 'H-PC', 'L-PC']].max(axis=1)
-            atr14 = float(df['TR'].rolling(window=14).mean().iloc[-1]) if not df['TR'].empty else curr_price * 0.05
+            df_tr = pd.DataFrame(index=df.index)
+            df_tr['H-L'] = high - low
+            df_tr['H-PC'] = abs(high - close.shift(1))
+            df_tr['L-PC'] = abs(low - close.shift(1))
+            df_tr['TR'] = df_tr[['H-L', 'H-PC', 'L-PC']].max(axis=1)
+            atr_series = df_tr['TR'].rolling(window=14).mean()
+            if not atr_series.empty and not pd.isna(atr_series.iloc[-1]):
+                atr14 = float(atr_series.iloc[-1])
+            else:
+                atr14 = curr_price * 0.05
 
-            vol_mean = volume.tail(20).mean()
-            curr_vol = float(volume.iloc[-1])
-            is_vol_surge = curr_vol > (vol_mean * 1.5)
+            vol_mean = volume.tail(20).mean() if len(volume) >= 20 else volume.mean()
+            curr_vol = float(volume.iloc[-1]) if not volume.empty else 100000.0
+            is_vol_surge = curr_vol > (vol_mean * 1.5) if not pd.isna(vol_mean) and vol_mean > 0 else False
 
             if curr_price > sma20 and sma20 > sma50:
                 wyckoff_phase = f"Phase D/E 主升強勢 (RSI:{rsi14:.1f})"
@@ -359,7 +373,8 @@ class QuantScreenerEngine:
 
             return wyckoff_phase, atr14, rsi14, sma20, sma50
         except Exception:
-            return "Phase B 震盪蓄勢", float(df['Close'].iloc[-1] * 0.05), 50.0, float(df['Close'].iloc[-1]), float(df['Close'].iloc[-1])
+            curr_p = float(df['Close'].iloc[-1]) if df is not None and not df.empty and 'Close' in df.columns else 100.0
+            return wyckoff_phase, curr_p * 0.05, rsi14, curr_p, curr_p
 
     def _call_gemini_for_screening_evaluation(self, stock_name, symbol, ic, sharpe, f_score, altman_z, tech_str, news_text):
         api_key = os.getenv("GEMINI_API_KEY")
@@ -465,7 +480,7 @@ class QuantScreenerEngine:
             yf_ticker_obj = yf.Ticker(symbol, session=self.session)
             f_raw, z_raw = self._calculate_real_fundamental_scores(yf_ticker_obj, price)
             
-            vol_series = df['Volume'].tail(5).mean()
+            vol_series = df['Volume'].tail(5).mean() if 'Volume' in df.columns else 50000.0
             recent_volume = float(vol_series) if not pd.isna(vol_series) else 50000.0
             
             daily_rets = df['Close'].pct_change().dropna()
@@ -493,7 +508,7 @@ class QuantScreenerEngine:
             score_diff = round(comp_score - base_score, 1)
             diff_str = f"+{score_diff}" if score_diff >= 0 else f"{score_diff}"
 
-            technical_data_str = f"RSI:{rsi14:.1f} | 結構:{wyckoff_str.split()[0]}"
+            technical_data_str = f"RSI:{rsi_val:.1f} | 結構:{wyckoff_str.split()[0]}"
             news_score_str = f"{news_score_val:.1f} / 10"
 
             reasons = []
