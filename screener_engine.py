@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-QUANTUM ALPHA TERMINAL — 全量真實計量、技術指標與 Gemini 智慧消息面融合篩選引擎 (含分數變化對比)
+QUANTUM ALPHA TERMINAL — 全量真實計量、動態技術面數據、消息面分數與 Gemini 智慧融合篩選引擎
 """
 
 import os
@@ -319,24 +319,65 @@ class QuantScreenerEngine:
         except Exception:
             return 5, 2.5
 
-    def _call_gemini_for_screening_evaluation(self, stock_name, symbol, ic, sharpe, f_score, altman_z, news_text):
+    def _calculate_technical_indicators(self, df):
+        """⚡ 動態計算技術指標（RSI, SMA20/50, ATR 與威科夫結構）"""
+        try:
+            close = df['Close']
+            high = df['High']
+            low = df['Low']
+            volume = df['Volume']
+
+            sma20 = float(close.rolling(window=20).mean().iloc[-1]) if len(close) >= 20 else float(close.mean())
+            sma50 = float(close.rolling(window=50).mean().iloc[-1]) if len(close) >= 50 else sma20
+            curr_price = float(close.iloc[-1])
+
+            delta = close.diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = gain / loss.replace(0, 0.001)
+            rsi14 = float((100 - (100 / (1 + rs))).iloc[-1]) if not rs.empty else 50.0
+
+            df['H-L'] = high - low
+            df['H-PC'] = abs(high - close.shift(1))
+            df['L-PC'] = abs(low - close.shift(1))
+            df['TR'] = df[['H-L', 'H-PC', 'L-PC']].max(axis=1)
+            atr14 = float(df['TR'].rolling(window=14).mean().iloc[-1]) if not df['TR'].empty else curr_price * 0.05
+
+            vol_mean = volume.tail(20).mean()
+            curr_vol = float(volume.iloc[-1])
+            is_vol_surge = curr_vol > (vol_mean * 1.5)
+
+            if curr_price > sma20 and sma20 > sma50:
+                wyckoff_phase = f"Phase D/E 主升強勢 (RSI:{rsi14:.1f})"
+            elif curr_price < sma20 and sma20 < sma50:
+                wyckoff_phase = f"Phase E 下降派發 (RSI:{rsi14:.1f})"
+            else:
+                if is_vol_surge and curr_price <= low.tail(20).min() * 1.03:
+                    wyckoff_phase = f"Phase C Spring 洗盤 (量增)"
+                else:
+                    wyckoff_phase = f"Phase B 箱體蓄勢 (RSI:{rsi14:.1f})"
+
+            return wyckoff_phase, atr14, rsi14, sma20, sma50
+        except Exception:
+            return "Phase B 震盪蓄勢", float(df['Close'].iloc[-1] * 0.05), 50.0, float(df['Close'].iloc[-1]), float(df['Close'].iloc[-1])
+
+    def _call_gemini_for_screening_evaluation(self, stock_name, symbol, ic, sharpe, f_score, altman_z, tech_str, news_text):
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
-            return 0.0, "消息面平穩"
+            return 0.0, 5.0, "消息面平穩"
 
         prompt = f"""
-作為華爾街量化資深操盤手，請精準評估以下股票的綜合多維度表現：
+作為華爾街量化資深操盤手，請評估以下股票：
 - 股票：{stock_name} ({symbol})
-- 量化預測 IC: {ic}
-- 夏普比率: {sharpe}
-- Piotroski F-Score: {f_score}/9
-- Altman Z-Score: {altman_z}
+- 量化預測 IC: {ic} | 夏普比率: {sharpe}
+- 技術結構: {tech_str}
 - 即時新聞頭條：{news_text}
 
-請嚴格回傳一個 JSON 物件，包含兩個欄位：
-1. "sentiment_bonus": 數字，範圍嚴格控制在 -3.0 到 +4.0 之間（利多加分、利空扣分，避免給予過度極端的評分）。
-2. "ai_summary": 字串，限 30 字以內的精煉中文評語。
-回傳格式範例: {{"sentiment_bonus": 1.5, "ai_summary": "財報表現穩健，機構資金持續流入。"}}
+請嚴格回傳一個 JSON 物件，包含三個欄位：
+1. "sentiment_bonus": 數字，範圍 -3.0 到 +4.0（情感加權分）。
+2. "news_score": 數字，範圍 0 到 10（即消息面綜合評分，10分為極佳利多）。
+3. "ai_summary": 字串，限 30 字以內的精煉中文評語。
+回傳格式範例: {{"sentiment_bonus": 2.0, "news_score": 8.5, "ai_summary": "財報亮眼且威科夫結構強勢。"}}
 """
         models = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
         headers = {"Content-Type": "application/json"}
@@ -354,10 +395,10 @@ class QuantScreenerEngine:
                     if "candidates" in res_json and len(res_json["candidates"]) > 0:
                         text_res = res_json['candidates'][0]['content']['parts'][0]['text']
                         parsed = json.loads(text_res)
-                        return float(parsed.get("sentiment_bonus", 0.0)), str(parsed.get("ai_summary", "消息面平穩"))
+                        return float(parsed.get("sentiment_bonus", 0.0)), float(parsed.get("news_score", 5.0)), str(parsed.get("ai_summary", "消息面平穩"))
             except Exception:
                 continue
-        return 0.0, "消息面平穩"
+        return 0.0, 5.0, "消息面平穩"
 
     def _process_single_stock(self, stock, macro_multiplier):
         symbol = self.get_ticker_symbol(stock)
@@ -366,9 +407,9 @@ class QuantScreenerEngine:
                 "股票名稱": stock, "股票代碼": "N/A", "最新現價": "N/A", "raw_price": -1.0,
                 "貨幣": "USD", "綜合評分": 0.0, "上一版純量化分": 0.0, "分數變化 (Δ)": "+0.0", "評估結果": "不合格", "投資建議": "暫時剔除 (Exclude)",
                 "不合格原因": "非純股票資產或無法解析有效代碼", "量化預測 IC": 0.0, "Sharpe Ratio": 0.0,
-                "Piotroski F": "N/A", "Altman Z": 0.0, "技術面分析 (威科夫/ATR)": "N/A",
-                "消息面與基本面解讀": "無法取得有效市場數據", "建議倉位比例": "0%", "建議配置金額 (€)": 0.0, 
-                "ATR 停損位": "N/A", "狀態": "不合格"
+                "技術面數據": "N/A", "消息面分數": "N/A",
+                "技術面分析 (威科夫/ATR)": "N/A", "消息面與基本面解讀": "無法取得有效市場數據",
+                "建議倉位比例": "0%", "建議配置金額 (€)": 0.0, "ATR 停損位": "N/A", "狀態": "不合格"
             }
 
         df = pd.DataFrame()
@@ -402,9 +443,9 @@ class QuantScreenerEngine:
                     "股票名稱": stock, "股票代碼": symbol, "最新現價": "N/A", "raw_price": -1.0,
                     "貨幣": currency, "綜合評分": 0.0, "上一版純量化分": 0.0, "分數變化 (Δ)": "+0.0", "評估結果": "不合格", "投資建議": "暫時剔除 (Exclude)",
                     "不合格原因": f"雙軌備援後仍無法取得歷史行情 ({symbol})", "量化預測 IC": 0.0, "Sharpe Ratio": 0.0,
-                    "Piotroski F": "N/A", "Altman Z": 0.0, "技術面分析 (威科夫/ATR)": "N/A",
-                    "消息面與基本面解讀": "歷史行情取得受限或 API 頻率超限", "建議倉位比例": "0%", 
-                    "建議配置金額 (€)": 0.0, "ATR 停損位": "N/A", "狀態": "不合格 (資料源受限)"
+                    "技術面數據": "N/A", "消息面分數": "N/A",
+                    "技術面分析 (威科夫/ATR)": "N/A", "消息面與基本面解讀": "歷史行情取得受限",
+                    "建議倉位比例": "0%", "建議配置金額 (€)": 0.0, "ATR 停損位": "N/A", "狀態": "不合格 (資料源受限)"
                 }
             
             price = float(df['Close'].iloc[-1])
@@ -413,22 +454,16 @@ class QuantScreenerEngine:
                     "股票名稱": stock, "股票代碼": symbol, "最新現價": "N/A", "raw_price": -1.0,
                     "貨幣": currency, "綜合評分": 0.0, "上一版純量化分": 0.0, "分數變化 (Δ)": "+0.0", "評估結果": "不合格", "投資建議": "暫時迴避 (Avoid)",
                     "不合格原因": "股價資料無效或為零", "量化預測 IC": 0.0, "Sharpe Ratio": 0.0,
-                    "Piotroski F": "N/A", "Altman Z": 0.0, "技術面分析 (威科夫/ATR)": "N/A",
-                    "消息面與基本面解讀": "價格數據異常", "建議倉位比例": "0%", "建議配置金額 (€)": 0.0, 
-                    "ATR 停損位": "N/A", "狀態": "不合格 (數據異常)"
+                    "技術面數據": "N/A", "消息面分數": "N/A",
+                    "技術面分析 (威科夫/ATR)": "N/A", "消息面與基本面解讀": "價格數據異常",
+                    "建議倉位比例": "0%", "建議配置金額 (€)": 0.0, "ATR 停損位": "N/A", "狀態": "不合格 (數據異常)"
                 }
 
+            wyckoff_str, atr, rsi_val, sma20, sma50 = self._calculate_technical_indicators(df)
             live_news_text = self._fetch_live_news_summary(stock)
 
             yf_ticker_obj = yf.Ticker(symbol, session=self.session)
             f_raw, z_raw = self._calculate_real_fundamental_scores(yf_ticker_obj, price)
-
-            df['H-L'] = df['High'] - df['Low']
-            df['H-PC'] = abs(df['High'] - df['Close'].shift(1))
-            df['L-PC'] = abs(df['Low'] - df['Close'].shift(1))
-            df['TR'] = df[['H-L', 'H-PC', 'L-PC']].max(axis=1)
-            atr_series = df['TR'].rolling(window=14).mean()
-            atr = float(atr_series.iloc[-1]) if not atr_series.empty and not pd.isna(atr_series.iloc[-1]) else price * 0.05
             
             vol_series = df['Volume'].tail(5).mean()
             recent_volume = float(vol_series) if not pd.isna(vol_series) else 50000.0
@@ -445,22 +480,23 @@ class QuantScreenerEngine:
             returns_3m = float(df['Close'].iloc[-1] / df['Close'].iloc[-60] - 1) if len(df) >= 60 and df['Close'].iloc[-60] > 0 else 0.03
             ic_score = round(min(0.35, max(-0.15, returns_3m * 0.45 + 0.03)) * macro_multiplier, 3)
 
-            # 計算上一版純量化分數 (基線分數)
             base_raw_score = (ic_score * 140.0 + max(-1.0, sharpe) * 12.0 + (f_raw / 9.0) * 30.0 + min(z_raw, 6.0) * 4.0)
             base_score = round(max(0.0, min(100.0, base_raw_score + 25.0)), 1)
 
-            # 調用 Gemini 進行智慧評分加權與解讀
-            sentiment_bonus, ai_screening_summary = self._call_gemini_for_screening_evaluation(
-                stock_name=stock, symbol=symbol, ic=ic_score, sharpe=sharpe, f_score=f_raw, altman_z=z_raw, news_text=live_news_text
+            sentiment_bonus, news_score_val, ai_screening_summary = self._call_gemini_for_screening_evaluation(
+                stock_name=stock, symbol=symbol, ic=ic_score, sharpe=sharpe, f_score=f_raw, altman_z=z_raw, tech_str=wyckoff_str, news_text=live_news_text
             )
 
-            # 本版帶有 AI 情感加權的綜合評分
             final_raw_score = base_raw_score + sentiment_bonus * 3.5
             comp_score = round(max(0.0, min(100.0, final_raw_score + 25.0)), 1)
 
-            # 計算分數變化 (Δ)
             score_diff = round(comp_score - base_score, 1)
             diff_str = f"+{score_diff}" if score_diff >= 0 else f"{score_diff}"
+
+            # 技術面數據格式化字串
+            technical_data_str = f"RSI:{rsi14_str if 'rsi14_str' in locals() else f'{rsi14:.1f}'} | SMA20:{sma20:.1f}"
+            technical_data_str = f"RSI:{rsi14:.1f} | 結構:{wyckoff_str.split()[0]}"
+            news_score_str = f"{news_score_val:.1f} / 10"
 
             reasons = []
             if recent_volume < 5000:
@@ -473,36 +509,29 @@ class QuantScreenerEngine:
                     "股票名稱": stock, "股票代碼": symbol, "最新現價": f"{curr_symbol}{price:,.2f}", "raw_price": price,
                     "貨幣": currency, "綜合評分": comp_score, "上一版純量化分": base_score, "分數變化 (Δ)": diff_str, "評估結果": "不合格", "投資建議": "暫時迴避 (Avoid)",
                     "不合格原因": "；".join(reasons), "量化預測 IC": ic_score, "Sharpe Ratio": sharpe,
-                    "Piotroski F": f"{f_raw}/9", "Altman Z": z_raw, 
-                    "技術面分析 (威科夫/ATR)": "流動性枯竭，短線偏弱，建議落袋或避開",
-                    "消息面與基本面解讀": ai_screening_summary,
+                    "技術面數據": technical_data_str, "消息面分數": news_score_str,
+                    "技術面分析 (威科夫/ATR)": wyckoff_str, "消息面與基本面解讀": ai_screening_summary,
                     "建議倉位比例": "0%", "建議配置金額 (€)": 0.0, "ATR 停損位": f"{curr_symbol}{max(0, price - 2 * atr):,.2f}",
                     "狀態": "不合格 (流動性不足)"
                 }
 
             if comp_score >= 82:
                 eval_result, investment_rec = "極優 (Alpha 顯著)", "強力買進 (Strong Buy)"
-                tech_analysis = "威科夫 Phase C (Spring 彈簧洗盤確認) - 主力吸籌完成，量價齊揚。"
             elif comp_score >= 70:
                 eval_result, investment_rec = "優良 (多頭排列)", "逢低吸納 (Accumulate)"
-                tech_analysis = "威科夫 Phase B/C (箱體震盪蓄勢) - 回測支撐帶量守住。"
             elif comp_score >= 58:
                 eval_result, investment_rec = "中立 (震盪築底)", "區間操作 (Range Trade)"
-                tech_analysis = "威科夫 Phase B (橫向累積) - 均線糾結，等待方向選擇。"
             elif comp_score >= 45:
                 eval_result, investment_rec = "偏弱 (動能不足)", "減碼觀望 (Reduce / Watch)"
-                tech_analysis = "威科夫 Phase D (弱勢反彈遭逢賣壓) - 上方均線反壓重。"
             else:
                 eval_result, investment_rec = "風險 (空頭排列)", "強力賣出 / 避開 (Sell / Avoid)"
-                tech_analysis = "威科夫 Phase E (下降趨勢派發) - 跌破重要支撐。"
 
             return {
                 "股票名稱": stock, "股票代碼": symbol, "最新現價": f"{curr_symbol}{price:,.2f}", "raw_price": price,
                 "貨幣": currency, "綜合評分": comp_score, "上一版純量化分": base_score, "分數變化 (Δ)": diff_str, "評估結果": eval_result, "投資建議": investment_rec,
                 "不合格原因": "無 (完全符合量化與流動性標準)", "量化預測 IC": ic_score, "Sharpe Ratio": sharpe,
-                "Piotroski F": f"{f_raw}/9", "Altman Z": z_raw, 
-                "技術面分析 (威科夫/ATR)": tech_analysis,
-                "消息面與基本面解讀": ai_screening_summary,
+                "技術面數據": technical_data_str, "消息面分數": news_score_str,
+                "技術面分析 (威科夫/ATR)": wyckoff_str, "消息面與基本面解讀": ai_screening_summary,
                 "建議倉位比例": "0%", "建議配置金額 (€)": 0.0, 
                 "ATR 停損位": f"{curr_symbol}{max(0, price - 2 * atr):,.2f}",
                 "狀態": "通過 (可交易)"
@@ -512,7 +541,7 @@ class QuantScreenerEngine:
                 "股票名稱": stock, "股票代碼": symbol, "最新現價": "N/A", "raw_price": -1.0,
                 "貨幣": "USD", "綜合評分": 0.0, "上一版純量化分": 0.0, "分數變化 (Δ)": "+0.0", "評估結果": "不合格", "投資建議": "暫時剔除 (Exclude)",
                 "不合格原因": f"例外錯誤 ({str(e)})", "量化預測 IC": 0.0, "Sharpe Ratio": 0.0,
-                "Piotroski F": "N/A", "Altman Z": 0.0, 
+                "技術面數據": "N/A", "消息面分數": "N/A",
                 "技術面分析 (威科夫/ATR)": "計算例外", "消息面與基本面解讀": "系統內部錯誤",
                 "建議倉位比例": "0%", "建議配置金額 (€)": 0.0, "ATR 停損位": "N/A", "狀態": "不合格 (例外錯誤)"
             }
@@ -570,7 +599,6 @@ class QuantScreenerEngine:
         if df_passed.empty:
             return pd.DataFrame(), pd.DataFrame()
 
-        # 1. 短線排序
         df_short = df_passed.copy()
         if '量化預測 IC' in df_short.columns and 'Sharpe Ratio' in df_short.columns:
             df_short['short_score'] = df_short['量化預測 IC'] * 50 + df_short['綜合評分'] * 0.5 + df_short['Sharpe Ratio'] * 10
@@ -587,8 +615,7 @@ class QuantScreenerEngine:
             stop_loss = row['ATR 停損位']
             alloc_pct = f"{round(max(2.0, 12.0 - idx * 0.8), 1)}%"
             alloc_amt = round(capital * (float(alloc_pct.replace('%','')) / 100.0), 2)
-            
-            ai_reason = row.get('消息面與基本面解讀', f"動能強勢(IC:{row['量化預測 IC']})，威科夫回檔套利。")
+            ai_reason = row.get('消息面與基本面解讀', f"動能強勢(IC:{row['量化預測 IC']})，技術面多頭排列。")
 
             short_results.append({
                 "排名": f"#{idx+1}",
@@ -603,17 +630,7 @@ class QuantScreenerEngine:
                 "一句話推薦原因": ai_reason
             })
 
-        # 2. 中長線排序
         df_long = df_passed.copy()
-        def extract_f(val):
-            try:
-                return int(str(val).split('/')[0])
-            except:
-                return 5
-        df_long['f_val'] = df_long['Piotroski F'].apply(extract_f)
-        df_long['long_score'] = df_long['f_val'] * 10 + df_long['Altman Z'] * 5 + df_long['綜合評分'] * 0.3
-        df_long = df_long.sort_values(by='long_score', ascending=False)
-
         top10_long = df_long.head(10).reset_index(drop=True)
         long_results = []
         for idx, row in top10_long.iterrows():
@@ -624,8 +641,7 @@ class QuantScreenerEngine:
             target_price = round(raw_p * 1.25, 2)
             alloc_pct = f"{round(max(4.0, 15.0 - idx * 1.0), 1)}%"
             alloc_amt = round(capital * (float(alloc_pct.replace('%','')) / 100.0), 2)
-            
-            ai_reason = row.get('消息面與基本面解讀', f"財務極佳(F:{row['Piotroski F']} Z:{row['Altman Z']})，護城河深厚。")
+            ai_reason = row.get('消息面與基本面解讀', f"技術面穩健(消息面分:{row['消息面分數']})，中長線佈局。")
 
             long_results.append({
                 "排名": f"#{idx+1}",
@@ -634,7 +650,7 @@ class QuantScreenerEngine:
                 "最新現價": row['最新現價'],
                 "逢低佈局價": f"{curr_sym}{accum_price:,.2f}",
                 "中長線目標價": f"{curr_sym}{target_price:,.2f}",
-                "財務安全 (F/Z)": f"{row['Piotroski F']} | Z:{row['Altman Z']}",
+                "技術面數據": row['技術面數據'],
                 "建議倉位": alloc_pct,
                 "配置金額 (€)": alloc_amt,
                 "一句話推薦原因": ai_reason
