@@ -424,20 +424,19 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
 
         rec_types = df_res['投資建議'].unique()
         for rec in rec_types:
-            # ⚡ 這裡已調整為每個類別顯示 TOP 5
             sub_df = df_res[df_res['投資建議'] == rec].head(5)
             if not sub_df.empty:
                 st.markdown(f"#### 🔥 【{rec}】TOP 5 精選標的 (共 {len(sub_df)} 檔)")
                 for idx, row in sub_df.iterrows():
-                    with st.expander(f"📌 {row['股票名稱']} ({row['股票代碼']}) — 現價: {row['最新現價']} | 綜合評分: {row['綜合評分']}分 | 建議: {row['投資建議']}"):
+                    with st.expander(f"📌 {row['股票名稱']} ({row['股票代碼']}) — 現價: {row['最新現價']} | 綜合評分: {row['綜合評分']}分 (Δ:{row['分數變化 (Δ)']}) | 建議: {row['投資建議']}"):
                         ca, cb, cc, cd = st.columns(4)
                         ca.metric("評估結果", row['評估結果'])
                         cb.metric("夏普比率 (Sharpe)", row['Sharpe Ratio'])
-                        cc.metric("財務體質 (F-Score)", row['Piotroski F'])
-                        cd.metric("ATR 停損位", row['ATR 停損位'])
+                        cc.metric("技術面數據", row['技術面數據'])
+                        cd.metric("消息面分數", row['消息面分數'])
                         
                         st.markdown(f"""
-                        * **量化預測 IC**: `{row['量化預測 IC']}` | **破產預警 (Altman Z)**: `{row['Altman Z']}`
+                        * **量化預測 IC**: `{row['量化預測 IC']}` | **上一版基準分**: `{row['上一版純量化分']}`
                         * **建議倉位配置**: `{row['建議倉位比例']}` (約 `{row['建議配置金額 (€)']:,} €`)
                         * **📊 技術面分析 (威科夫結構與 ATR)**: `{row['技術面分析 (威科夫/ATR)']}`
                         """)
