@@ -493,8 +493,6 @@ class QuantScreenerEngine:
             score_diff = round(comp_score - base_score, 1)
             diff_str = f"+{score_diff}" if score_diff >= 0 else f"{score_diff}"
 
-            # 技術面數據格式化字串
-            technical_data_str = f"RSI:{rsi14_str if 'rsi14_str' in locals() else f'{rsi14:.1f}'} | SMA20:{sma20:.1f}"
             technical_data_str = f"RSI:{rsi14:.1f} | 結構:{wyckoff_str.split()[0]}"
             news_score_str = f"{news_score_val:.1f} / 10"
 
