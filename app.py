@@ -2,7 +2,7 @@
 """
 app.py
 ------
-QUANTUM ALPHA TERMINAL // WORLD OF WARCRAFT & CYBERPUNK EPIC EDITION
+QUANTUM ALPHA TERMINAL // EPIC WARCRAFT & PROFESSIONAL QUANTITATIVE EDITION
 """
 
 import streamlit as st
@@ -14,8 +14,8 @@ import urllib.parse
 from screener_engine import QuantScreenerEngine
 
 st.set_page_config(
-    page_title="AZEROTH ALPHA TERMINAL // EPIC WARCRAFT EDITION",
-    page_icon="🛡️",
+    page_title="QUANTUM ALPHA TERMINAL // MYTHIC QUANT EDITION",
+    page_icon="⚡",
     layout="wide"
 )
 
@@ -149,7 +149,7 @@ st.markdown("""
         text-shadow: 0 0 12px rgba(245, 158, 11, 0.6);
     }
 
-    /* 🛡️ 分數變化彩色戰利品標籤 (Buff / Debuff Badge) */
+    /* 🛡️ 分數變化彩色標籤 (Buff / Debuff Badge) */
     .buff-badge {
         color: #4ADE80;
         background-color: rgba(34, 197, 94, 0.15);
@@ -171,8 +171,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="cyber-header">🛡️ AZEROTH ALPHA TERMINAL</div>', unsafe_allow_html=True)
-st.markdown('<div class="cyber-sub">[EPIC_WARCRAFT_ACTIVE] // REAL-TIME MESH QUANTITATIVE SCREENING & MAGITECH ALLOCATION // v2026 MYTHIC EDITION</div>', unsafe_allow_html=True)
+st.markdown('<div class="cyber-header">⚡ QUANTUM ALPHA TERMINAL</div>', unsafe_allow_html=True)
+st.markdown('<div class="cyber-sub">[SYSTEM_ACTIVE] // QUANTITATIVE MESH SCREENING & DYNAMIC ASSET ALLOCATION // MYTHIC EDITION</div>', unsafe_allow_html=True)
 
 engine = QuantScreenerEngine()
 default_watchlist = engine.watchlist
@@ -181,8 +181,8 @@ market_state = engine.get_current_market_state()
 default_impulse = market_state["credit_impulse"]
 default_m2 = market_state["m2_gap"]
 
-st.sidebar.header("⚔️ 遠征軍戰情控制台")
-st.sidebar.info(f"🌐 艾澤拉斯宏觀同步 ({market_state['sync_date']}): 10年美債 {market_state['benchmark_tnx']}%")
+st.sidebar.header("🎛️ 戰情室控制台")
+st.sidebar.info(f"🌐 實時宏觀同步 ({market_state['sync_date']}): 10年美債 {market_state['benchmark_tnx']}%")
 
 impulse_options = [
     "擴張期 (Expansion - 流動性充沛)", 
@@ -192,7 +192,7 @@ impulse_options = [
 default_impulse_idx = impulse_options.index(default_impulse) if default_impulse in impulse_options else 0
 
 credit_impulse = st.sidebar.selectbox(
-    "1. 遠征信貸脈衝 (Credit Impulse)", 
+    "1. 信貸脈衝狀態 (Credit Impulse)", 
     impulse_options, 
     index=default_impulse_idx
 )
@@ -203,7 +203,7 @@ m2_gap = st.sidebar.slider(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("#### 📁 戰利品清單與來源")
+st.sidebar.markdown("#### 📁 股票池來源與輸入模式")
 
 watchlist_source = st.sidebar.radio(
     "選擇股票池來源", 
@@ -261,19 +261,19 @@ else:
 
 st.sidebar.markdown("---")
 kelly_mode = st.sidebar.selectbox(
-    "3. 裝備頭寸與凱利模型", 
-    ["四分之一凱利 (0.25 f* - 史詩推薦)", "半凱利 (0.5 f*)", "ATR 波動率目標化 (ATR Sizing)"], 
+    "3. 資金控管與頭寸模型", 
+    ["四分之一凱利 (0.25 f* - 機構推薦)", "半凱利 (0.5 f*)", "ATR 波動率目標化 (ATR Sizing)"], 
     index=0
 )
 
 total_capital = st.sidebar.number_input(
-    "總冒險資金 (€ / $)", 
+    "總投資資本 (€ / $)", 
     value=100000, 
     step=10000
 )
 
 st.sidebar.markdown("---")
-run_btn = st.sidebar.button("⚔️ 啟動史詩量化遠征與投組鍛造", type="primary", use_container_width=True)
+run_btn = st.sidebar.button("⚡ 啟動量子量化篩選與投組構建", type="primary", use_container_width=True)
 
 @st.cache_data(ttl=1800)
 def fetch_stock_rss_news(symbol_or_name):
@@ -298,11 +298,11 @@ if run_btn:
         progress_bar = st.progress(0)
         status_text = st.empty()
         
-        status_text.text("⚔️ [01/03] 正在與奧格瑪與暴風城伺服器建立法力連結、同步宏觀流動性...")
+        status_text.text("⚡ [01/03] 建立量子安全連線、同步全球宏觀與實時流動性狀態...")
         progress_bar.progress(25)
         time.sleep(0.2)
         
-        status_text.text("🚀 [02/03] 啟動多維度量化引擎、解析 RSS 戰報與威科夫神話結構...")
+        status_text.text("🚀 [02/03] 執行多維度量化引擎、即時 RSS 消息面融合與威科夫技術運算...")
         progress_bar.progress(60)
         
         df_res, df_unqualified = engine.run_screening_with_unqualified(
@@ -313,7 +313,7 @@ if run_btn:
             method=kelly_mode
         )
         
-        status_text.text("💎 [03/03] 計算神話 Sharpe、IC 分數與 100% 歸一化動態頭寸配置...")
+        status_text.text("💎 [03/03] 計算 Sharpe、IC 分數與 100% 歸一化動態頭寸配置...")
         progress_bar.progress(90)
         time.sleep(0.2)
         
@@ -328,7 +328,7 @@ if run_btn:
             st.session_state['m2_gap'] = m2_gap
             
             progress_bar.progress(100)
-            status_text.text("✨ 史詩量化遠征與 Portfolio Top 投組鍛造完畢！")
+            status_text.text("✨ 量子量化全景篩選與 Portfolio Top 投組建構完畢！")
             time.sleep(0.3)
             
             progress_bar.empty()
@@ -340,10 +340,10 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
     df_unqualified = st.session_state['df_unqualified']
     
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("遠征信貸脈衝 (實時)", st.session_state['credit_impulse'].split()[0], f"美債 {market_state['benchmark_tnx']}%")
-    col2.metric("超額 M2 剪刀差", f"+{st.session_state['m2_gap']}%", "神話法力驅動")
-    col3.metric("評估合格標的", f"{len(df_res)} 檔", "多因子量化試煉通過")
-    col4.metric("未通過 / 遭剔除", f"{len(df_unqualified)} 檔", "流動性不足遭到擊殺")
+    col1.metric("宏觀信貸脈衝 (實時)", st.session_state['credit_impulse'].split()[0], f"美債 {market_state['benchmark_tnx']}%")
+    col2.metric("超額 M2 剪刀差", f"+{st.session_state['m2_gap']}%", "動態估值驅動")
+    col3.metric("評估合格標的", f"{len(df_res)} 檔", "多因子量化評分通過")
+    col4.metric("未通過 / 遭剔除", f"{len(df_unqualified)} 檔", "流動性或風控未達標")
     
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📊 合格全景量化清單",
@@ -375,7 +375,7 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
         col_t1, col_t2 = st.columns([3, 1])
         with col_t2:
             total_top15_amt = top15_df['建議配置金額 (€)'].sum() if '建議配置金額 (€)' in top15_df.columns else 0.0
-            st.metric("Top 15 總配置金額", f"€ {total_top15_amt:,.2f}", f"佔總資金 {round(total_top15_amt/total_capital*100, 1)}%")
+            st.metric("Top 15 總配置金額", f"€ {total_top15_amt:,.2f}", f"佔總資本 {round(total_top15_amt/total_capital*100, 1)}%")
             
         st.dataframe(top15_display, use_container_width=True, height=550)
         
@@ -398,7 +398,7 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
 
     with tab4:
         st.markdown("### ⚡ TOP 10 短線動能操作 vs TOP 10 中長線價值佈局雙軌戰情室")
-        st.markdown("結合**量化價格要素**、**即時 RSS 財經戰報**與 **Gemini AI 智慧總結**，為您完整展開短線與中長線的精準操盤指引。")
+        st.markdown("結合**量化價格要素**、**即時 RSS 財經新聞**與 **Gemini AI 智慧總結**，為您完整展開短線與中長線的精準操盤指引。")
         
         df_short_top10, df_long_top10 = engine.get_dual_track_top10(df_res, capital=total_capital)
         
@@ -464,7 +464,7 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
             if not sub_df.empty:
                 st.markdown(f"#### 🔥 【{rec}】TOP 5 精選標的 (共 {len(sub_df)} 檔)")
                 for idx, row in sub_df.iterrows():
-                    # 🛡️ 根據分數變化（Δ）動態渲染魔獸風格的 Buff（綠）與 Debuff（紅）徽章
+                    # 🛡️ 根據分數變化（Δ）動態渲染魔獸風格的彩色增益/減益標籤
                     diff_val_str = str(row['分數變化 (Δ)'])
                     is_positive = not diff_val_str.startswith("-")
                     badge_class = "buff-badge" if is_positive else "debuff-badge"
@@ -512,4 +512,4 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
                 )
                 st.markdown(ai_report)
 else:
-    st.info("👈 請在左側側邊欄點擊「⚔️ 啟動史詩量化遠征與投組鍛造」按鈕，展開專業的魔獸風格量化決策終端。")
+    st.info("👈 請在左側側邊欄點擊「⚡ 啟動量子量化篩選與投組構建」按鈕，展開專業的量化決策終端。")
