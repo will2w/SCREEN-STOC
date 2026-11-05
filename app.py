@@ -165,7 +165,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="cyber-header">👑 BANSHEE QUEEN // QUANTUM ALPHA TERMINAL</div>', unsafe_allow_html=True)
-st.markdown('<div class="cyber-sub">[FORSAKEN_PROTOCOL_ACTIVE] // BLACK-LITTERMAN BAYESIAN MESH & TAIL RISK SCREENING // MYTHIC EDITION</div>', unsafe_allow_html=True)
+st.markdown('<div class="cyber-sub">[INSTITUTIONAL_QUANT_CORE] // BLACK-LITTERMAN BAYESIAN OPTIMIZATION & TAIL RISK SCREENING</div>', unsafe_allow_html=True)
 
 engine = QuantScreenerEngine()
 default_watchlist = engine.watchlist
@@ -174,8 +174,8 @@ market_state = engine.get_current_market_state()
 default_impulse = market_state["credit_impulse"]
 default_m2 = market_state["m2_gap"]
 
-st.sidebar.header("🎛️ 被遺忘者議會戰情控制台")
-st.sidebar.info(f"🌐 實時宏觀同步 ({market_state['sync_date']}): 10年美債 {market_state['benchmark_tnx']}%")
+st.sidebar.header("🎛️ 總體經濟與流動性控制台")
+st.sidebar.info(f"🌐 實時宏觀數據同步 ({market_state['sync_date']}): 10年期美債收益率 {market_state['benchmark_tnx']}%")
 
 impulse_options = [
     "擴張期 (Expansion - 流動性充沛)", 
@@ -185,28 +185,28 @@ impulse_options = [
 default_impulse_idx = impulse_options.index(default_impulse) if default_impulse in impulse_options else 0
 
 credit_impulse = st.sidebar.selectbox(
-    "1. 信貸脈衝狀態 (Credit Impulse)", 
+    "1. 宏觀信貸脈衝 (Credit Impulse)", 
     impulse_options, 
     index=default_impulse_idx
 )
 
 m2_gap = st.sidebar.slider(
-    "2. 超額 M2 剪刀差 (ΔM2 - ΔGDP %)", 
+    "2. 超額貨幣供應剪刀差 (ΔM2 - ΔGDP %)", 
     -2.0, 6.0, float(default_m2), 0.1
 )
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("#### 📁 股票池來源與輸入模式")
+st.sidebar.markdown("#### 📁 資產池來源與輸入模式")
 
 watchlist_source = st.sidebar.radio(
-    "選擇股票池來源", 
-    ["預設 Excel 檔案", "上傳自定義檔案 (Excel/CSV)", "手動輸入股票代碼"],
+    "選擇證券池來源", 
+    ["預設專業清單檔案", "上傳自定義資料集 (Excel/CSV)", "手動輸入標的代碼"],
     label_visibility="collapsed"
 )
 
 active_watchlist = default_watchlist
 
-if watchlist_source == "上傳自定義檔案 (Excel/CSV)":
+if watchlist_source == "上傳自定義資料集 (Excel/CSV)":
     uploaded_file = st.sidebar.file_uploader("上傳 Excel 或 CSV 檔案", type=["xlsx", "csv"])
     if uploaded_file is not None:
         try:
@@ -224,49 +224,49 @@ if watchlist_source == "上傳自定義檔案 (Excel/CSV)":
                 target_col = df_upload.columns[0]
             
             active_watchlist = df_upload[target_col].dropna().astype(str).str.strip().tolist()
-            st.sidebar.success(f"✅ 成功載入上傳檔案，共 {len(active_watchlist)} 檔標的。")
+            st.sidebar.success(f"✅ 成功載入上傳標的集，共 {len(active_watchlist)} 檔。")
         except Exception as e:
             st.sidebar.error(f"❌ 讀取檔案失敗: {e}")
 
-elif watchlist_source == "手動輸入股票代碼":
+elif watchlist_source == "手動輸入標的代碼":
     manual_input = st.sidebar.text_area(
-        "輸入股票代碼 (支援逗號或換行分隔)", 
+        "輸入證券代碼 (支援逗號或換行分隔)", 
         value="NVDA, AAPL, TSLA, MSFT, BAS.DE, EON.DE",
         height=100
     )
     if manual_input:
         raw_items = manual_input.replace(";", ",").replace("\n", ",").split(",")
         active_watchlist = [item.strip() for item in raw_items if item.strip()]
-        st.sidebar.success(f"✅ 已解析手動輸入的 {len(active_watchlist)} 檔標的。")
+        st.sidebar.success(f"✅ 已解析手動輸入之 {len(active_watchlist)} 檔標的。")
 
 st.sidebar.markdown("---")
 selection_mode = st.sidebar.radio(
-    "選取過濾模式", 
-    ["評估全部標的", "自選特定標的池子集"], 
+    "篩選執行範圍", 
+    ["全體證券評估", "自選特定子集組合"], 
     index=0
 )
 
-if selection_mode == "評估全部標的":
+if selection_mode == "全體證券評估":
     selected_stocks = active_watchlist
-    st.sidebar.info(f"📊 將全面評估當前來源的 {len(active_watchlist)} 檔股票。")
+    st.sidebar.info(f"📊 將全面執行當前來源之 {len(active_watchlist)} 檔標的量化模型審判。")
 else:
-    selected_stocks = st.sidebar.multiselect("從當前清單中勾選", active_watchlist, default=active_watchlist[:15] if len(active_watchlist)>=15 else active_watchlist)
+    selected_stocks = st.sidebar.multiselect("從清單中勾選目標標的", active_watchlist, default=active_watchlist[:15] if len(active_watchlist)>=15 else active_watchlist)
 
 st.sidebar.markdown("---")
 kelly_mode = st.sidebar.selectbox(
-    "3. 機構頭寸與配置模型", 
-    ["Black-Litterman 貝葉斯貝塔優化 (女王推薦)", "四分之一凱利 (0.25 f*)", "ATR 波動率目標化 (ATR Sizing)"], 
+    "3. 投資組合配置模型 (Portfolio Optimization)", 
+    ["Black-Litterman 貝葉斯資產配置模型 (機構推薦)", "fractional Kelly Criterion (0.25 凱利模型)", "ATR Volatility-Targeted Sizing (波動率目標化)"], 
     index=0
 )
 
 total_capital = st.sidebar.number_input(
-    "總投資資本 (€ / $)", 
+    "總運用資本額 (Total Capital, € / $)", 
     value=100000, 
     step=10000
 )
 
 st.sidebar.markdown("---")
-run_btn = st.sidebar.button("👑 啟動被遺忘者禁忌量化審判與投組鍛造", type="primary", use_container_width=True)
+run_btn = st.sidebar.button("👑 執行多因子計量模型審判與投組最佳化", type="primary", use_container_width=True)
 
 @st.cache_data(ttl=1800)
 def fetch_stock_rss_news(symbol_or_name):
@@ -286,16 +286,16 @@ def fetch_stock_rss_news(symbol_or_name):
 
 if run_btn:
     if not selected_stocks:
-        st.warning("請至少選取或輸入一檔股票。")
+        st.warning("請至少選取或輸入一檔證券標的。")
     else:
         progress_bar = st.progress(0)
         status_text = st.empty()
         
-        status_text.text("🦇 [01/03] 建立暗影禁忌安全連線、同步全球宏觀與信貸脈衝狀態...")
+        status_text.text("🦇 [01/03] 建立安全數據連線、同步宏觀經濟指標與實時信貸脈衝...")
         progress_bar.progress(25)
         time.sleep(0.2)
         
-        status_text.text("🚀 [02/03] 執行多維度量化、Sortino/MDD 尾部風險與 Black-Litterman 運算...")
+        status_text.text("🚀 [02/03] 運行多維度量化因子模型、Sortino/MDD 尾部風險與貝葉斯估值...")
         progress_bar.progress(60)
         
         df_res, df_unqualified = engine.run_screening_with_unqualified(
@@ -306,14 +306,14 @@ if run_btn:
             method=kelly_mode
         )
         
-        status_text.text("💎 [03/03] 計算 Calmar、Beta、摩擦成本扣減與 100% 歸一化權重...")
+        status_text.text("💎 [03/03] 計算 Calmar 報酬回撤比、Beta 系統風險與淨資本配置權重...")
         progress_bar.progress(90)
         time.sleep(0.2)
         
         if df_res.empty and df_unqualified.empty:
             progress_bar.empty()
             status_text.empty()
-            st.error("篩選結果為空，請檢查網絡連線或標的代碼是否正確。")
+            st.error("量化篩選結果為空，請檢查網路連線或標的代碼是否正確。")
         else:
             st.session_state['df_res'] = df_res
             st.session_state['df_unqualified'] = df_unqualified
@@ -321,7 +321,7 @@ if run_btn:
             st.session_state['m2_gap'] = m2_gap
             
             progress_bar.progress(100)
-            status_text.text("✨ 女王禁忌量化全景審判與 Portfolio Top 投組鍛造完畢！")
+            status_text.text("✨ 華爾街級計量資產審判與核心投資組合 (Portfolio Top) 構築完成！")
             time.sleep(0.3)
             
             progress_bar.empty()
@@ -333,40 +333,40 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
     df_unqualified = st.session_state['df_unqualified']
     
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("宏觀信貸脈衝 (實時)", st.session_state['credit_impulse'].split()[0], f"美債 {market_state['benchmark_tnx']}%")
-    col2.metric("超額 M2 剪刀差", f"+{st.session_state['m2_gap']}%", "動態估值驅動")
-    col3.metric("審判合格標的", f"{len(df_res)} 檔", "多因子量化試煉通過")
-    col4.metric("遭暗影剔除", f"{len(df_unqualified)} 檔", "風控或流動性未達標")
+    col1.metric("宏觀信貸脈衝 (Credit Impulse)", st.session_state['credit_impulse'].split()[0], f"美債收益率 {market_state['benchmark_tnx']}%")
+    col2.metric("超額貨幣剪刀差 (ΔM2-ΔGDP)", f"+{st.session_state['m2_gap']}%", "動態估值驅動因子")
+    col3.metric("計量審判合格標的數", f"{len(df_res)} 檔", "多因子計量模型通過")
+    col4.metric("風控模型剔除標的數", f"{len(df_unqualified)} 檔", "流動性或尾部風險未達標")
     
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "📊 合格全景量化清單",
-        "⚠️ 未通過檢驗 / 遭剔除清單",
-        "🎯 Portfolio Top 15 核心投組", 
-        "⚡ TOP 10 短線與中長線雙軌戰情室",
-        "💰 投資建議與倉位配置總覽", 
-        "🏆 依投資建議分類之 TOP 5 深度戰情解讀"
+        "📊 合格證券全景量化清單",
+        "⚠️ 風控模型剔除標的清單",
+        "🎯 Portfolio Top 15 核心投資組合", 
+        "⚡ TOP 10 短期動能與中長線價值雙軌戰情室",
+        "💰 資本配置與資產分配總覽", 
+        "🏆 依投資建議分類之 TOP 5 深度計量解讀"
     ])
     
     with tab1:
-        st.markdown("### 📊 通過多維度量化檢驗之合格股票池 (含機構級風控參數)")
+        st.markdown("### 📊 通過多維度計量檢驗之合格證券資產池 (含機構級風控參數)")
         if df_res.empty:
-            st.warning("⚠️ 目前沒有符合篩選條件的合格標的。")
+            st.warning("⚠️ 目前無符合量化標準之合格標的。")
         else:
             excel_view_df = df_res.drop(columns=['raw_price', '貨幣', '建議倉位比例', '建議配置金額 (€)', '不合格原因'], errors='ignore')
             st.dataframe(excel_view_df, use_container_width=True, height=600)
         
     with tab2:
-        st.markdown("### ⚠️ 未通過檢驗 / 遭剔除之標的清單與原因")
+        st.markdown("### ⚠️ 未通過量化檢驗 / 遭風控模型剔除之標的清單與原因")
         if df_unqualified.empty:
-            st.info("🎉 太棒了！目前選取的股票池中沒有被暗影剔除的不合格標的。")
+            st.info("🎉 太棒了！當前資產池中無任何標的觸發風控剔除機制。")
         else:
             unqualified_display = df_unqualified.drop(columns=['raw_price', '貨幣', '建議倉位比例', '建議配置金額 (€)'], errors='ignore')
             st.dataframe(unqualified_display, use_container_width=True, height=550)
         
     with tab3:
-        st.markdown("### 🎯 Portfolio Top 15 核心投組推薦 (Black-Litterman 貝葉斯配置)")
+        st.markdown("### 🎯 Portfolio Top 15 核心投資組合推薦 (Black-Litterman Bayesian Allocation)")
         if df_res.empty:
-            st.warning("⚠️ 目前無合格標的可以建構投組。")
+            st.warning("⚠️ 目前無合格標的可用以建構投資組合。")
         else:
             top15_df = df_res.head(15).reset_index(drop=True)
             top15_display = top15_df.drop(columns=['raw_price', '貨幣', '不合格原因'], errors='ignore')
@@ -396,30 +396,30 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
                 st.plotly_chart(fig_top15, use_container_width=True)
 
     with tab4:
-        st.markdown("### ⚡ TOP 10 短線動能操作 vs TOP 10 中長線價值佈局雙軌戰情室")
+        st.markdown("### ⚡ TOP 10 短期動能操作 vs TOP 10 中長線價值配置雙軌戰情室")
         if df_res.empty:
-            st.warning("⚠️ 目前無合格標的可以生成雙軌戰情室。")
+            st.warning("⚠️ 目前無合格標的可用以生成雙軌戰情室。")
         else:
-            st.markdown("結合**量化價格要素**、**即時 RSS 財經新聞**與 **Gemini AI 智慧總結**，為您完整展開短線與中長線的精準操盤指引。")
+            st.markdown("結合**量化計量指標**、**即時 RSS 財經頭條新聞**與 **Gemini AI 貝葉斯情感觀點**，為您完整開展短中長線的精準操盤指引。")
             
             df_short_top10, df_long_top10 = engine.get_dual_track_top10(df_res, capital=total_capital)
             
             st.markdown("---")
-            st.markdown("#### 🚀 TOP 10 短線動能操作精選標的")
+            st.markdown("#### 🚀 TOP 10 短期動能操作精選標的 (Tactical Momentum)")
             if df_short_top10.empty:
-                st.info("目前合格股票池數量不足 10 檔。")
+                st.info("合格資產池數量不足 10 檔。")
             else:
                 st.dataframe(df_short_top10, use_container_width=True, height=450)
                 
             st.markdown("---")
-            st.markdown("#### 🏛️ TOP 10 中長線價值佈局精選標的")
+            st.markdown("#### 🏛️ TOP 10 中長線價值佈局精選標的 (Strategic Value)")
             if df_long_top10.empty:
-                st.info("目前合格股票池數量不足 10 檔。")
+                st.info("合格資產池數量不足 10 檔。")
             else:
                 st.dataframe(df_long_top10, use_container_width=True, height=450)
         
     with tab5:
-        st.markdown("### 💰 投資建議與動態資金配置總覽")
+        st.markdown("### 💰 投資建議與動態資本配置總覽")
         if df_res.empty or '投資建議' not in df_res.columns:
             st.warning("⚠️ 目前無合格標的或資料結構不足以進行配置總覽。")
         else:
@@ -452,7 +452,7 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
     with tab6:
         st.markdown("### 🏆 依華爾街投資建議分類之 TOP 5 深度技術、基本面與關鍵操盤解讀")
         if df_res.empty or '投資建議' not in df_res.columns:
-            st.warning("⚠️ 目前無合格標的可以進行深度戰情解讀。")
+            st.warning("⚠️ 目前無合格標的可用以進行深度計量解讀。")
         else:
             @st.cache_data(ttl=3600)
             def cached_ai_analysis(stock_name, symbol, tech_str, fundamental_str):
@@ -478,22 +478,22 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
 
                         with st.expander(f"📌 {row['股票名稱']} ({row['股票代碼']}) — 現價: {row['最新現價']} | 綜合評分: {row['綜合評分']}分 ({delta_html}) | 建議: {row['投資建議']}", expanded=False):
                             ca, cb, cc, cd = st.columns(4)
-                            ca.metric("索提諾比率 (Sortino)", row.get('Sortino Ratio', 1.0))
-                            cb.metric("最大回撤 (MDD)", row.get('最大回撤 (MDD)', '0.0%'))
-                            cc.metric("市場貝塔 (Beta)", row.get('貝塔係數 (Beta)', 1.0))
-                            cd.metric("卡爾瑪比率", row.get('卡爾瑪比率', 1.0))
+                            ca.metric("索提諾比率 (Sortino Ratio)", row.get('Sortino Ratio', 1.0))
+                            cb.metric("最大回撤 (Maximum Drawdown)", row.get('最大回撤 (MDD)', '0.0%'))
+                            cc.metric("市場貝塔 (Market Beta)", row.get('貝塔係數 (Beta)', 1.0))
+                            cd.metric("卡爾瑪比率 (Calmar Ratio)", row.get('卡爾瑪比率', 1.0))
                             
                             st.markdown(f"""
-                            * **技術面數據**: `{row['技術面數據']}` | **消息面分數**: `{row['消息面分數']}`
-                            * **量化預測 IC**: `{row['量化預測 IC']}` | **上一版純量化分**: `{row['上一版純量化分']}`
-                            * **建議倉位配置**: `{row['建議倉位比例']}` (約 `{row['建議配置金額 (€)']:,} €`)
-                            * **📊 技術面分析 (威科夫結構與 ATR)**: `{row['技術面分析 (威科夫/ATR)']}`
+                            * **技術面指標數據**: `{row['技術面數據']}` | **消息面量化得分**: `{row['消息面分數']}`
+                            * **資訊係數預測 (IC Score)**: `{row['量化預測 IC']}` | **前版純量化基準分**: `{row['上一版純量化分']}`
+                            * **建議資本配置比例**: `{row['建議倉位比例']}` (約合 `{row['建議配置金額 (€)']:,} €`)
+                            * **📊 威科夫微觀結構與 ATR 風控**: `{row['技術面分析 (威科夫/ATR)']}`
                             """)
                             
                             st.markdown("---")
-                            st.markdown("##### ⚡ 華爾街 AI 戰情情報 (新聞總結、預測與深度操盤指引)")
+                            st.markdown("##### ⚡ 華爾街級 AI 戰情情報 (新聞總結、貝葉斯觀點與操盤指引)")
                             
-                            with st.spinner(f"正在同步 {row['股票名稱']} 實時情報與操盤邏輯中..."):
+                            with st.spinner(f"正在同步 {row['股票名稱']} 實時新聞情報與計量模型中..."):
                                 ai_insight, rss_news = cached_ai_analysis(
                                     stock_name=row['股票名稱'],
                                     symbol=row['股票代碼'],
@@ -502,16 +502,16 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
                                 )
                             
                             if rss_news:
-                                with st.expander("查看參考的即時 RSS 財經頭條"):
+                                with st.expander("查看參考之即時 RSS 財經頭條"):
                                     for news in rss_news:
                                         st.markdown(f"- [{news['title']}]({news['link']}) `({news['published'][:16]})`")
                             
                             st.markdown(ai_insight)
                             
         st.markdown("---")
-        st.markdown("### 🤖 Gemini AI 全局戰情室總結報告")
-        if st.button("✨ 啟動 Gemini AI 巨集戰情室診斷", type="primary"):
-            with st.spinner("正在生成全局總結報告..."):
+        st.markdown("### 🤖 Gemini AI 全局資產配置與宏觀戰情室報告")
+        if st.button("✨ 啟動 Gemini AI 巨集戰情室總結診斷", type="primary"):
+            with st.spinner("正在生成全局宏觀與投組配置總結報告..."):
                 ai_report = engine.analyze_with_gemini(
                     df_res, 
                     st.session_state['credit_impulse'],
@@ -519,4 +519,4 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
                 )
                 st.markdown(ai_report)
 else:
-    st.info("👈 請在左側側邊欄點擊「👑 啟動被遺忘者禁忌量化審判與投組鍛造」按鈕，展開專業的機構級量化決策終端。")
+    st.info("👈 請在左側側邊欄點擊「👑 執行多因子計量模型審判與投組最佳化」按鈕，展開專業的機構級量化決策終端。")
