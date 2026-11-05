@@ -356,8 +356,11 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
     
     with tab1:
         st.markdown("### 📊 通過多維度量化檢驗之合格股票池")
-        excel_view_df = df_res.drop(columns=['raw_price', '貨幣', '建議倉位比例', '建議配置金額 (€)', '不合格原因'], errors='ignore')
-        st.dataframe(excel_view_df, use_container_width=True, height=600)
+        if df_res.empty:
+            st.warning("⚠️ 目前沒有符合篩選條件的合格標的。")
+        else:
+            excel_view_df = df_res.drop(columns=['raw_price', '貨幣', '建議倉位比例', '建議配置金額 (€)', '不合格原因'], errors='ignore')
+            st.dataframe(excel_view_df, use_container_width=True, height=600)
         
     with tab2:
         st.markdown("### ⚠️ 未通過檢驗 / 遭剔除之標的清單與原因")
@@ -369,138 +372,148 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
         
     with tab3:
         st.markdown("### 🎯 Portfolio Top 15 核心投組推薦")
-        top15_df = df_res.head(15).reset_index(drop=True)
-        top15_display = top15_df.drop(columns=['raw_price', '貨幣', '不合格原因'], errors='ignore')
-        
-        col_t1, col_t2 = st.columns([3, 1])
-        with col_t2:
-            total_top15_amt = top15_df['建議配置金額 (€)'].sum() if '建議配置金額 (€)' in top15_df.columns else 0.0
-            st.metric("Top 15 總配置金額", f"€ {total_top15_amt:,.2f}", f"佔總資本 {round(total_top15_amt/total_capital*100, 1)}%")
+        if df_res.empty:
+            st.warning("⚠️ 目前無合格標的可以建構投組。")
+        else:
+            top15_df = df_res.head(15).reset_index(drop=True)
+            top15_display = top15_df.drop(columns=['raw_price', '貨幣', '不合格原因'], errors='ignore')
             
-        st.dataframe(top15_display, use_container_width=True, height=550)
-        
-        if not top15_df.empty and '建議配置金額 (€)' in top15_df.columns:
-            fig_top15 = px.bar(
-                top15_df, 
-                x='股票名稱', 
-                y='建議配置金額 (€)', 
-                color='綜合評分',
-                title='Portfolio Top 15 核心標的之最佳資本配置與綜合評分分佈',
-                template='plotly_dark'
-            )
-            fig_top15.update_layout(
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                font_color='#F8FAFC',
-                title_font_color='#F59E0B'
-            )
-            st.plotly_chart(fig_top15, use_container_width=True)
+            col_t1, col_t2 = st.columns([3, 1])
+            with col_t2:
+                total_top15_amt = top15_df['建議配置金額 (€)'].sum() if '建議配置金額 (€)' in top15_df.columns else 0.0
+                st.metric("Top 15 總配置金額", f"€ {total_top15_amt:,.2f}", f"佔總資本 {round(total_top15_amt/total_capital*100, 1)}%")
+                
+            st.dataframe(top15_display, use_container_width=True, height=550)
+            
+            if not top15_df.empty and '建議配置金額 (€)' in top15_df.columns:
+                fig_top15 = px.bar(
+                    top15_df, 
+                    x='股票名稱', 
+                    y='建議配置金額 (€)', 
+                    color='綜合評分',
+                    title='Portfolio Top 15 核心標的之最佳資本配置與綜合評分分佈',
+                    template='plotly_dark'
+                )
+                fig_top15.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font_color='#F8FAFC',
+                    title_font_color='#F59E0B'
+                )
+                st.plotly_chart(fig_top15, use_container_width=True)
 
     with tab4:
         st.markdown("### ⚡ TOP 10 短線動能操作 vs TOP 10 中長線價值佈局雙軌戰情室")
-        st.markdown("結合**量化價格要素**、**即時 RSS 財經新聞**與 **Gemini AI 智慧總結**，為您完整展開短線與中長線的精準操盤指引。")
-        
-        df_short_top10, df_long_top10 = engine.get_dual_track_top10(df_res, capital=total_capital)
-        
-        st.markdown("---")
-        st.markdown("#### 🚀 TOP 10 短線動能操作精選標的")
-        if df_short_top10.empty:
-            st.info("目前合格股票池數量不足 10 檔。")
+        if df_res.empty:
+            st.warning("⚠️ 目前無合格標的可以生成雙軌戰情室。")
         else:
-            st.dataframe(df_short_top10, use_container_width=True, height=450)
+            st.markdown("結合**量化價格要素**、**即時 RSS 財經新聞**與 **Gemini AI 智慧總結**，為您完整展開短線與中長線的精準操盤指引。")
             
-        st.markdown("---")
-        st.markdown("#### 🏛️ TOP 10 中長線價值佈局精選標的")
-        if df_long_top10.empty:
-            st.info("目前合格股票池數量不足 10 檔。")
-        else:
-            st.dataframe(df_long_top10, use_container_width=True, height=450)
+            df_short_top10, df_long_top10 = engine.get_dual_track_top10(df_res, capital=total_capital)
+            
+            st.markdown("---")
+            st.markdown("#### 🚀 TOP 10 短線動能操作精選標的")
+            if df_short_top10.empty:
+                st.info("目前合格股票池數量不足 10 檔。")
+            else:
+                st.dataframe(df_short_top10, use_container_width=True, height=450)
+                
+            st.markdown("---")
+            st.markdown("#### 🏛️ TOP 10 中長線價值佈局精選標的")
+            if df_long_top10.empty:
+                st.info("目前合格股票池數量不足 10 檔。")
+            else:
+                st.dataframe(df_long_top10, use_container_width=True, height=450)
         
     with tab5:
         st.markdown("### 💰 投資建議與動態資金配置總覽")
-        rec_summary = df_res.groupby('投資建議').agg(
-            標的數量=('股票名稱', 'count'),
-            平均綜合評分=('綜合評分', 'mean'),
-            總配置金額=('建議配置金額 (€)', 'sum')
-        ).reset_index()
-        rec_summary['平均綜合評分'] = rec_summary['平均綜合評分'].round(1)
-        
-        col_s1, col_s2 = st.columns([2, 1])
-        with col_s1:
-            st.dataframe(rec_summary, use_container_width=True)
-        with col_s2:
-            fig_pie = px.pie(
-                rec_summary, 
-                names='投資建議', 
-                values='總配置金額', 
-                title='各投資建議類別之資本配置佔比',
-                template='plotly_dark'
-            )
-            fig_pie.update_layout(
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                font_color='#F8FAFC',
-                title_font_color='#F59E0B'
-            )
-            st.plotly_chart(fig_pie, use_container_width=True)
+        if df_res.empty or '投資建議' not in df_res.columns:
+            st.warning("⚠️ 目前無合格標的或資料結構不足以進行配置總覽。")
+        else:
+            rec_summary = df_res.groupby('投資建議').agg(
+                標的數量=('股票名稱', 'count'),
+                平均綜合評分=('綜合評分', 'mean'),
+                總配置金額=('建議配置金額 (€)', 'sum')
+            ).reset_index()
+            rec_summary['平均綜合評分'] = rec_summary['平均綜合評分'].round(1)
+            
+            col_s1, col_s2 = st.columns([2, 1])
+            with col_s1:
+                st.dataframe(rec_summary, use_container_width=True)
+            with col_s2:
+                fig_pie = px.pie(
+                    rec_summary, 
+                    names='投資建議', 
+                    values='總配置金額', 
+                    title='各投資建議類別之資本配置佔比',
+                    template='plotly_dark'
+                )
+                fig_pie.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font_color='#F8FAFC',
+                    title_font_color='#F59E0B'
+                )
+                st.plotly_chart(fig_pie, use_container_width=True)
             
     with tab6:
         st.markdown("### 🏆 依華爾街投資建議分類之 TOP 5 深度技術、基本面與關鍵操盤解讀")
-        
-        @st.cache_data(ttl=3600)
-        def cached_ai_analysis(stock_name, symbol, tech_str, fundamental_str):
-            news_list = fetch_stock_rss_news(stock_name if stock_name else symbol)
-            return engine.analyze_stock_with_ai_and_rss(
-                stock_name=stock_name,
-                symbol=symbol,
-                rss_news_list=news_list,
-                tech_str=tech_str,
-                fundamental_str=fundamental_str
-            ), news_list
+        if df_res.empty or '投資建議' not in df_res.columns:
+            st.warning("⚠️ 目前無合格標的可以進行深度戰情解讀。")
+        else:
+            @st.cache_data(ttl=3600)
+            def cached_ai_analysis(stock_name, symbol, tech_str, fundamental_str):
+                news_list = fetch_stock_rss_news(stock_name if stock_name else symbol)
+                return engine.analyze_stock_with_ai_and_rss(
+                    stock_name=stock_name,
+                    symbol=symbol,
+                    rss_news_list=news_list,
+                    tech_str=tech_str,
+                    fundamental_str=fundamental_str
+                ), news_list
 
-        rec_types = df_res['投資建議'].unique()
-        for rec in rec_types:
-            sub_df = df_res[df_res['投資建議'] == rec].head(5)
-            if not sub_df.empty:
-                st.markdown(f"#### 🔥 【{rec}】TOP 5 精選標的 (共 {len(sub_df)} 檔)")
-                for idx, row in sub_df.iterrows():
-                    # 🛡️ 根據分數變化（Δ）動態渲染魔獸風格的彩色增益/減益標籤
-                    diff_val_str = str(row['分數變化 (Δ)'])
-                    is_positive = not diff_val_str.startswith("-")
-                    badge_class = "buff-badge" if is_positive else "debuff-badge"
-                    delta_html = f'<span class="{badge_class}">Δ {diff_val_str}</span>'
+            rec_types = df_res['投資建議'].unique()
+            for rec in rec_types:
+                sub_df = df_res[df_res['投資建議'] == rec].head(5)
+                if not sub_df.empty:
+                    st.markdown(f"#### 🔥 【{rec}】TOP 5 精選標的 (共 {len(sub_df)} 檔)")
+                    for idx, row in sub_df.iterrows():
+                        diff_val_str = str(row['分數變化 (Δ)'])
+                        is_positive = not diff_val_str.startswith("-")
+                        badge_class = "buff-badge" if is_positive else "debuff-badge"
+                        delta_html = f'<span class="{badge_class}">Δ {diff_val_str}</span>'
 
-                    with st.expander(f"📌 {row['股票名稱']} ({row['股票代碼']}) — 現價: {row['最新現價']} | 綜合評分: {row['綜合評分']}分 ({delta_html}) | 建議: {row['投資建議']}", expanded=False):
-                        ca, cb, cc, cd = st.columns(4)
-                        ca.metric("評估結果", row['評估結果'])
-                        cb.metric("夏普比率 (Sharpe)", row['Sharpe Ratio'])
-                        cc.metric("技術面數據", row['技術面數據'])
-                        cd.metric("消息面分數", row['消息面分數'])
-                        
-                        st.markdown(f"""
-                        * **量化預測 IC**: `{row['量化預測 IC']}` | **上一版純量化分**: `{row['上一版純量化分']}`
-                        * **建議倉位配置**: `{row['建議倉位比例']}` (約 `{row['建議配置金額 (€)']:,} €`)
-                        * **📊 技術面分析 (威科夫結構與 ATR)**: `{row['技術面分析 (威科夫/ATR)']}`
-                        """)
-                        
-                        st.markdown("---")
-                        st.markdown("##### ⚡ 華爾街 AI 戰情情報 (新聞總結、預測與深度操盤指引)")
-                        
-                        with st.spinner(f"正在同步 {row['股票名稱']} 實時情報與操盤邏輯中..."):
-                            ai_insight, rss_news = cached_ai_analysis(
-                                stock_name=row['股票名稱'],
-                                symbol=row['股票代碼'],
-                                tech_str=row['技術面分析 (威科夫/ATR)'],
-                                fundamental_str=row['消息面與基本面解讀']
-                            )
-                        
-                        if rss_news:
-                            with st.expander("查看參考的即時 RSS 財經頭條"):
-                                for news in rss_news:
-                                    st.markdown(f"- [{news['title']}]({news['link']}) `({news['published'][:16]})`")
-                        
-                        st.markdown(ai_insight)
-                        
+                        with st.expander(f"📌 {row['股票名稱']} ({row['股票代碼']}) — 現價: {row['最新現價']} | 綜合評分: {row['綜合評分']}分 ({delta_html}) | 建議: {row['投資建議']}", expanded=False):
+                            ca, cb, cc, cd = st.columns(4)
+                            ca.metric("評估結果", row['評估結果'])
+                            cb.metric("夏普比率 (Sharpe)", row['Sharpe Ratio'])
+                            cc.metric("技術面數據", row['技術面數據'])
+                            cd.metric("消息面分數", row['消息面分數'])
+                            
+                            st.markdown(f"""
+                            * **量化預測 IC**: `{row['量化預測 IC']}` | **上一版純量化分**: `{row['上一版純量化分']}`
+                            * **建議倉位配置**: `{row['建議倉位比例']}` (約 `{row['建議配置金額 (€)']:,} €`)
+                            * **📊 技術面分析 (威科夫結構與 ATR)**: `{row['技術面分析 (威科夫/ATR)']}`
+                            """)
+                            
+                            st.markdown("---")
+                            st.markdown("##### ⚡ 華爾街 AI 戰情情報 (新聞總結、預測與深度操盤指引)")
+                            
+                            with st.spinner(f"正在同步 {row['股票名稱']} 實時情報與操盤邏輯中..."):
+                                ai_insight, rss_news = cached_ai_analysis(
+                                    stock_name=row['股票名稱'],
+                                    symbol=row['股票代碼'],
+                                    tech_str=row['技術面分析 (威科夫/ATR)'],
+                                    fundamental_str=row['消息面與基本面解讀']
+                                )
+                            
+                            if rss_news:
+                                with st.expander("查看參考的即時 RSS 財經頭條"):
+                                    for news in rss_news:
+                                        st.markdown(f"- [{news['title']}]({news['link']}) `({news['published'][:16]})`")
+                            
+                            st.markdown(ai_insight)
+                            
         st.markdown("---")
         st.markdown("### 🤖 Gemini AI 全局戰情室總結報告")
         if st.button("✨ 啟動 Gemini AI 巨集戰情室診斷", type="primary"):
