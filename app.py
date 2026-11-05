@@ -2,7 +2,7 @@
 """
 app.py
 ------
-QUANTUM ALPHA TERMINAL // EPIC WARCRAFT & PROFESSIONAL QUANTITATIVE EDITION
+QUANTUM ALPHA TERMINAL // INSTITUTIONAL-GRADE MYTHIC QUANTITATIVE EDITION
 """
 
 import streamlit as st
@@ -14,8 +14,8 @@ import urllib.parse
 from screener_engine import QuantScreenerEngine
 
 st.set_page_config(
-    page_title="QUANTUM ALPHA TERMINAL // MYTHIC QUANT EDITION",
-    page_icon="⚡",
+    page_title="QUANTUM ALPHA TERMINAL // INSTITUTIONAL MYTHIC EDITION",
+    page_icon="🛡️",
     layout="wide"
 )
 
@@ -171,8 +171,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="cyber-header">⚡ QUANTUM ALPHA TERMINAL</div>', unsafe_allow_html=True)
-st.markdown('<div class="cyber-sub">[SYSTEM_ACTIVE] // QUANTITATIVE MESH SCREENING & DYNAMIC ASSET ALLOCATION // MYTHIC EDITION</div>', unsafe_allow_html=True)
+st.markdown('<div class="cyber-header">🛡️ QUANTUM ALPHA TERMINAL</div>', unsafe_allow_html=True)
+st.markdown('<div class="cyber-sub">[INSTITUTIONAL_SYSTEM_ACTIVE] // BLACK-LITTERMAN & MESH QUANTITATIVE SCREENING // MYTHIC EDITION</div>', unsafe_allow_html=True)
 
 engine = QuantScreenerEngine()
 default_watchlist = engine.watchlist
@@ -181,7 +181,7 @@ market_state = engine.get_current_market_state()
 default_impulse = market_state["credit_impulse"]
 default_m2 = market_state["m2_gap"]
 
-st.sidebar.header("🎛️ 戰情室控制台")
+st.sidebar.header("🎛️ 機構戰情控制台")
 st.sidebar.info(f"🌐 實時宏觀同步 ({market_state['sync_date']}): 10年美債 {market_state['benchmark_tnx']}%")
 
 impulse_options = [
@@ -261,8 +261,8 @@ else:
 
 st.sidebar.markdown("---")
 kelly_mode = st.sidebar.selectbox(
-    "3. 資金控管與頭寸模型", 
-    ["四分之一凱利 (0.25 f* - 機構推薦)", "半凱利 (0.5 f*)", "ATR 波動率目標化 (ATR Sizing)"], 
+    "3. 機構頭寸與配置模型", 
+    ["Black-Litterman 貝葉斯貝塔優化 (機構推薦)", "四分之一凱利 (0.25 f*)", "ATR 波動率目標化 (ATR Sizing)"], 
     index=0
 )
 
@@ -273,7 +273,7 @@ total_capital = st.sidebar.number_input(
 )
 
 st.sidebar.markdown("---")
-run_btn = st.sidebar.button("⚡ 啟動量子量化篩選與投組構建", type="primary", use_container_width=True)
+run_btn = st.sidebar.button("🛡️ 啟動機構級量化篩選與投組鍛造", type="primary", use_container_width=True)
 
 @st.cache_data(ttl=1800)
 def fetch_stock_rss_news(symbol_or_name):
@@ -298,11 +298,11 @@ if run_btn:
         progress_bar = st.progress(0)
         status_text = st.empty()
         
-        status_text.text("⚡ [01/03] 建立量子安全連線、同步全球宏觀與實時流動性狀態...")
+        status_text.text("🛡️ [01/03] 建立機構安全連線、同步全球宏觀與信貸脈衝狀態...")
         progress_bar.progress(25)
         time.sleep(0.2)
         
-        status_text.text("🚀 [02/03] 執行多維度量化引擎、即時 RSS 消息面融合與威科夫技術運算...")
+        status_text.text("🚀 [02/03] 執行多維度量化、Sortino/MDD 尾部風險與 Black-Litterman 運算...")
         progress_bar.progress(60)
         
         df_res, df_unqualified = engine.run_screening_with_unqualified(
@@ -313,7 +313,7 @@ if run_btn:
             method=kelly_mode
         )
         
-        status_text.text("💎 [03/03] 計算 Sharpe、IC 分數與 100% 歸一化動態頭寸配置...")
+        status_text.text("💎 [03/03] 計算 Calmar、Beta、摩擦成本扣減與 100% 歸一化權重...")
         progress_bar.progress(90)
         time.sleep(0.2)
         
@@ -328,7 +328,7 @@ if run_btn:
             st.session_state['m2_gap'] = m2_gap
             
             progress_bar.progress(100)
-            status_text.text("✨ 量子量化全景篩選與 Portfolio Top 投組建構完畢！")
+            status_text.text("✨ 機構級量化全景篩選與 Portfolio Top 投組鍛造完畢！")
             time.sleep(0.3)
             
             progress_bar.empty()
@@ -342,8 +342,8 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("宏觀信貸脈衝 (實時)", st.session_state['credit_impulse'].split()[0], f"美債 {market_state['benchmark_tnx']}%")
     col2.metric("超額 M2 剪刀差", f"+{st.session_state['m2_gap']}%", "動態估值驅動")
-    col3.metric("評估合格標的", f"{len(df_res)} 檔", "多因子量化評分通過")
-    col4.metric("未通過 / 遭剔除", f"{len(df_unqualified)} 檔", "流動性或風控未達標")
+    col3.metric("評估合格標的", f"{len(df_res)} 檔", "多因子量化試煉通過")
+    col4.metric("未通過 / 遭剔除", f"{len(df_unqualified)} 檔", "風控或流動性未達標")
     
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📊 合格全景量化清單",
@@ -355,7 +355,7 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
     ])
     
     with tab1:
-        st.markdown("### 📊 通過多維度量化檢驗之合格股票池")
+        st.markdown("### 📊 通過多維度量化檢驗之合格股票池 (含機構級風控參數)")
         if df_res.empty:
             st.warning("⚠️ 目前沒有符合篩選條件的合格標的。")
         else:
@@ -371,7 +371,7 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
             st.dataframe(unqualified_display, use_container_width=True, height=550)
         
     with tab3:
-        st.markdown("### 🎯 Portfolio Top 15 核心投組推薦")
+        st.markdown("### 🎯 Portfolio Top 15 核心投組推薦 (Black-Litterman 貝葉斯配置)")
         if df_res.empty:
             st.warning("⚠️ 目前無合格標的可以建構投組。")
         else:
@@ -485,12 +485,13 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
 
                         with st.expander(f"📌 {row['股票名稱']} ({row['股票代碼']}) — 現價: {row['最新現價']} | 綜合評分: {row['綜合評分']}分 ({delta_html}) | 建議: {row['投資建議']}", expanded=False):
                             ca, cb, cc, cd = st.columns(4)
-                            ca.metric("評估結果", row['評估結果'])
-                            cb.metric("夏普比率 (Sharpe)", row['Sharpe Ratio'])
-                            cc.metric("技術面數據", row['技術面數據'])
-                            cd.metric("消息面分數", row['消息面分數'])
+                            ca.metric("索提諾比率 (Sortino)", row['Sortino Ratio'])
+                            cb.metric("最大回撤 (MDD)", row['最大回撤 (MDD)'])
+                            cc.metric("市場貝塔 (Beta)", row['貝塔係數 (Beta)'])
+                            cd.metric("卡爾瑪比率 (Calmar)", row['卡爾瑪比率'])
                             
                             st.markdown(f"""
+                            * **技術面數據**: `{row['技術面數據']}` | **消息面分數**: `{row['消息面分數']}`
                             * **量化預測 IC**: `{row['量化預測 IC']}` | **上一版純量化分**: `{row['上一版純量化分']}`
                             * **建議倉位配置**: `{row['建議倉位比例']}` (約 `{row['建議配置金額 (€)']:,} €`)
                             * **📊 技術面分析 (威科夫結構與 ATR)**: `{row['技術面分析 (威科夫/ATR)']}`
@@ -525,4 +526,4 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
                 )
                 st.markdown(ai_report)
 else:
-    st.info("👈 請在左側側邊欄點擊「⚡ 啟動量子量化篩選與投組構建」按鈕，展開專業的量化決策終端。")
+    st.info("👈 請在左側側邊欄點擊「🛡️ 啟動機構級量化篩選與投組鍛造」按鈕，展開專業的機構級量化決策終端。")
