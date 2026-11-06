@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-BANSHEE QUEEN // INSTITUTIONAL QUANTITATIVE ENGINE (0-RPM SCREENING OPTIMIZED)
+BANSHEE QUEEN // INSTITUTIONAL QUANTITATIVE ENGINE (UNIFIED TOTAL SCORE & LONGITUDINAL DELTA)
 """
 
 import os
@@ -238,18 +238,6 @@ class QuantScreenerEngine:
         }
         return mapping.get(currency_code, currency_code + " ")
 
-    def _fetch_live_news_summary(self, stock_query):
-        try:
-            clean_q = str(stock_query).split(".")[0].strip()
-            rss_url = f"https://news.google.com/rss/search?q={urllib.parse.quote(clean_q + ' stock')}&hl=en-US&gl=US&ceid=US:en"
-            feed = feedparser.parse(rss_url)
-            titles = [entry.get('title', '') for entry in feed.entries[:3]]
-            if titles:
-                return " | ".join(titles)
-            return "近期無重大突發財經頭條。"
-        except Exception:
-            return "消息面平穩。"
-
     def _calculate_real_fundamental_scores(self, ticker_obj, price):
         try:
             fin = ticker_obj.financials
@@ -406,6 +394,48 @@ class QuantScreenerEngine:
         except Exception:
             return 1.0, "0.0%", 1.0, 1.0
 
+    def _load_screening_history(self):
+        history_path = "screening_history.json"
+        if os.path.exists(history_path):
+            try:
+                with open(history_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                return {}
+        return {}
+
+    def _save_screening_history(self, current_records):
+        history_path = "screening_history.json"
+        history_data = self._load_screening_history()
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        
+        for record in current_records:
+            sym = record.get("股票代碼")
+            score = record.get("綜合評分")
+            if sym and sym != "N/A":
+                if sym not in history_data:
+                    history_data[sym] = []
+                history_data[sym] = [h for h in history_data[sym] if h["date"] != today_str]
+                history_data[sym].append({"date": today_str, "score": score})
+                
+        try:
+            with open(history_path, "w", encoding="utf-8") as f:
+                json.dump(history_data, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+    def _get_previous_archived_score(self, symbol, current_score):
+        history_data = self._load_screening_history()
+        if symbol not in history_data or not history_data[symbol]:
+            return current_score
+            
+        sorted_records = sorted(history_data[symbol], key=lambda x: x["date"])
+        if len(sorted_records) >= 2:
+            return sorted_records[-2]["score"]
+        elif len(sorted_records) == 1:
+            return sorted_records[0]["score"]
+        return current_score
+
     def _process_single_stock(self, stock, macro_multiplier):
         symbol = self.get_ticker_symbol(stock)
         if not symbol:
@@ -489,19 +519,16 @@ class QuantScreenerEngine:
             returns_3m = float(df['Close'].iloc[-1] / df['Close'].iloc[-60] - 1) if len(df) >= 60 and df['Close'].iloc[-60] > 0 else 0.03
             ic_score = round(min(0.35, max(-0.15, returns_3m * 0.45 + 0.03)) * macro_multiplier, 3)
 
-            base_raw_score = (ic_score * 140.0 + max(-1.0, sharpe) * 12.0 + (f_raw / 9.0) * 30.0 + min(z_raw, 6.0) * 4.0)
-            base_score = round(max(0.0, min(100.0, base_raw_score + 25.0)), 1)
+            # 🛡️ 【三層全融合總評分核心 (Total Score Pipeline)】
+            core_alpha_score = (ic_score * 120.0 + max(-1.0, sharpe) * 10.0 + (f_raw / 9.0) * 25.0 + min(z_raw, 6.0) * 3.0)
+            sortino_multiplier = max(0.85, min(1.35, sortino_val / 1.5))
+            beta_adjustment = max(0.9, min(1.15, 2.0 - beta_val))
+            
+            integrated_raw_score = core_alpha_score * sortino_multiplier * beta_adjustment * macro_multiplier
+            total_score = round(max(0.0, min(100.0, integrated_raw_score + 18.0)), 1)
 
-            # 🟢 [RPM 優化] 初篩階段不發送 Gemini 請求，設為基準值，達到 0-RPM 篩選
-            sentiment_bonus = 0.0
             news_score_val = round(min(10.0, max(1.0, f_raw * 1.0)), 1)
-            ai_screening_summary = f"純量化計量與多維度風控模型評估中 (F-Score: {f_raw}, Z-Score: {z_raw})"
-
-            final_raw_score = base_raw_score + sentiment_bonus * 3.5
-            comp_score = round(max(0.0, min(100.0, final_raw_score + 25.0)), 1)
-
-            score_diff = round(comp_score - base_score, 1)
-            diff_str = f"+{score_diff}" if score_diff >= 0 else f"{score_diff}"
+            ai_screening_summary = f"多因子計量模型審判完成 (Sortino:{sortino_val:.2f}, Beta:{beta_val:.2f}, F-Score:{f_raw})"
 
             technical_data_str = f"RSI:{rsi_val:.1f} | 結構:{wyckoff_str.split()[0]}"
             news_score_str = f"{news_score_val:.1f} / 10"
@@ -515,7 +542,7 @@ class QuantScreenerEngine:
             if reasons:
                 return {
                     "股票名稱": stock, "股票代碼": symbol, "最新現價": f"{curr_symbol}{price:,.2f}", "raw_price": price,
-                    "貨幣": currency, "綜合評分": comp_score, "上一版純量化分": base_score, "分數變化 (Δ)": diff_str, "評估結果": "不合格", "投資建議": "暫時迴避 (Avoid)",
+                    "貨幣": currency, "綜合評分": total_score, "上一版純量化分": total_score, "分數變化 (Δ)": "+0.0", "評估結果": "不合格", "投資建議": "暫時迴避 (Avoid)",
                     "不合格原因": "；".join(reasons), "量化預測 IC": ic_score, "Sharpe Ratio": sharpe,
                     "Sortino Ratio": sortino_val, "最大回撤 (MDD)": mdd_val, "貝塔係數 (Beta)": beta_val, "卡爾瑪比率": calmar_val,
                     "技術面數據": technical_data_str, "消息面分數": news_score_str,
@@ -524,20 +551,20 @@ class QuantScreenerEngine:
                     "狀態": "不合格 (流動性不足)"
                 }
 
-            if comp_score >= 82:
+            if total_score >= 82:
                 eval_result, investment_rec = "極優 (Alpha 顯著)", "強力買進 (Strong Buy)"
-            elif comp_score >= 70:
+            elif total_score >= 70:
                 eval_result, investment_rec = "優良 (多頭排列)", "逢低吸納 (Accumulate)"
-            elif comp_score >= 58:
+            elif total_score >= 58:
                 eval_result, investment_rec = "中立 (震盪築底)", "區間操作 (Range Trade)"
-            elif comp_score >= 45:
+            elif total_score >= 45:
                 eval_result, investment_rec = "偏弱 (動能不足)", "減碼觀望 (Reduce / Watch)"
             else:
                 eval_result, investment_rec = "風險 (空頭排列)", "強力賣出 / 避開 (Sell / Avoid)"
 
             return {
                 "股票名稱": stock, "股票代碼": symbol, "最新現價": f"{curr_symbol}{price:,.2f}", "raw_price": price,
-                "貨幣": currency, "綜合評分": comp_score, "上一版純量化分": base_score, "分數變化 (Δ)": diff_str, "評估結果": eval_result, "投資建議": investment_rec,
+                "貨幣": currency, "綜合評分": total_score, "上一版純量化分": total_score, "分數變化 (Δ)": "+0.0", "評估結果": eval_result, "投資建議": investment_rec,
                 "不合格原因": "無 (完全符合量化與流動性標準)", "量化預測 IC": ic_score, "Sharpe Ratio": sharpe,
                 "Sortino Ratio": sortino_val, "最大回撤 (MDD)": mdd_val, "貝塔係數 (Beta)": beta_val, "卡爾瑪比率": calmar_val,
                 "技術面數據": technical_data_str, "消息面分數": news_score_str,
@@ -575,6 +602,20 @@ class QuantScreenerEngine:
                         results.append(res)
                 except Exception:
                     pass
+
+        # ⏳ 跨期歷史對比：用「當前總評分」減去「歷史存檔總評分」
+        for item in results:
+            sym = item.get("股票代碼")
+            curr_score = item.get("綜合評分", 0.0)
+            if sym and sym != "N/A":
+                prev_score = self._get_previous_archived_score(sym, curr_score)
+                item["上一版純量化分"] = prev_score
+                
+                score_diff = round(curr_score - prev_score, 1)
+                item["分數變化 (Δ)"] = f"+{score_diff}" if score_diff >= 0 else f"{score_diff}"
+
+        # 自動將當前運行結果寫入歷史存檔
+        self._save_screening_history(results)
 
         df_result = pd.DataFrame(results)
         if df_result.empty:
