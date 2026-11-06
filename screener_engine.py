@@ -2,7 +2,7 @@
 """
 screener_engine.py
 ------------------
-QUANTUM ALPHA TERMINAL — 機構級量化引擎（包含 Sortino、MDD、Beta、Calmar 與 Black-Litterman 貝葉斯優化）
+BANSHEE QUEEN // INSTITUTIONAL QUANTITATIVE ENGINE (0-RPM SCREENING OPTIMIZED)
 """
 
 import os
@@ -376,14 +376,12 @@ class QuantScreenerEngine:
             return wyckoff_phase, curr_p * 0.05, rsi14, curr_p, curr_p
 
     def _calculate_advanced_risk_metrics(self, df):
-        """🛡️ 計算機構級風控參數：Sortino、MDD、Beta、Calmar"""
         try:
             close = df['Close']
             daily_rets = close.pct_change().dropna()
             if daily_rets.empty:
                 return 1.0, "0.0%", 1.0, 1.0
 
-            # 1. Sortino Ratio (向下風險調整)
             downside_rets = daily_rets[daily_rets < 0]
             downside_std = float(downside_rets.std() * np.sqrt(252)) if not downside_rets.empty else 0.01
             if downside_std == 0:
@@ -392,63 +390,21 @@ class QuantScreenerEngine:
             annual_return = float(daily_rets.mean() * 252)
             sortino = round((annual_return - risk_free_rate) / downside_std, 2)
 
-            # 2. Maximum Drawdown (MDD)
             cum_returns = (1 + daily_rets).cumprod()
             peak = cum_returns.cummax()
             drawdown = (cum_returns - peak) / peak
             mdd = float(drawdown.min()) if not drawdown.empty else 0.0
             mdd_str = f"{round(mdd * 100, 2)}%"
 
-            # 3. Market Beta (對標 S&P 500 / 模擬基準)
             beta = round(float(1.0 + (daily_rets.std() - 0.015) * 10), 2)
             beta = max(0.2, min(2.5, beta))
 
-            # 4. Calmar Ratio
             abs_mdd = abs(mdd) if abs(mdd) > 0.001 else 0.01
             calmar = round(annual_return / abs_mdd, 2)
 
             return sortino, mdd_str, beta, calmar
         except Exception:
             return 1.0, "0.0%", 1.0, 1.0
-
-    def _call_gemini_for_screening_evaluation(self, stock_name, symbol, ic, sharpe, f_score, altman_z, tech_str, news_text):
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            return 0.0, 5.0, "消息面平穩"
-
-        prompt = f"""
-作為華爾街量化資深操盤手，請評估以下股票：
-- 股票：{stock_name} ({symbol})
-- 量化預測 IC: {ic} | 夏普比率: {sharpe}
-- 技術結構: {tech_str}
-- 即時新聞頭條：{news_text}
-
-請嚴格回傳一個 JSON 物件，包含三個欄位：
-1. "sentiment_bonus": 數字，範圍 -3.0 到 +4.0（情感加權分）。
-2. "news_score": 數字，範圍 0 到 10（即消息面綜合評分，10分為極佳利多）。
-3. "ai_summary": 字串，限 30 字以內的精煉中文評語。
-回傳格式範例: {{"sentiment_bonus": 2.0, "news_score": 8.5, "ai_summary": "財報亮眼且威科夫結構強勢。"}}
-"""
-        models = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
-        headers = {"Content-Type": "application/json"}
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"maxOutputTokens": 200, "temperature": 0.2, "responseMimeType": "application/json"}
-        }
-
-        for model in models:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-            try:
-                response = Session().post(url, headers=headers, json=payload, timeout=12)
-                if response.status_code == 200:
-                    res_json = response.json()
-                    if "candidates" in res_json and len(res_json["candidates"]) > 0:
-                        text_res = res_json['candidates'][0]['content']['parts'][0]['text']
-                        parsed = json.loads(text_res)
-                        return float(parsed.get("sentiment_bonus", 0.0)), float(parsed.get("news_score", 5.0)), str(parsed.get("ai_summary", "消息面平穩"))
-            except Exception:
-                continue
-        return 0.0, 5.0, "消息面平穩"
 
     def _process_single_stock(self, stock, macro_multiplier):
         symbol = self.get_ticker_symbol(stock)
@@ -514,7 +470,6 @@ class QuantScreenerEngine:
 
             wyckoff_str, atr, rsi_val, sma20, sma50 = self._calculate_technical_indicators(df)
             sortino_val, mdd_val, beta_val, calmar_val = self._calculate_advanced_risk_metrics(df)
-            live_news_text = self._fetch_live_news_summary(stock)
 
             yf_ticker_obj = yf.Ticker(symbol, session=self.session)
             f_raw, z_raw = self._calculate_real_fundamental_scores(yf_ticker_obj, price)
@@ -537,9 +492,10 @@ class QuantScreenerEngine:
             base_raw_score = (ic_score * 140.0 + max(-1.0, sharpe) * 12.0 + (f_raw / 9.0) * 30.0 + min(z_raw, 6.0) * 4.0)
             base_score = round(max(0.0, min(100.0, base_raw_score + 25.0)), 1)
 
-            sentiment_bonus, news_score_val, ai_screening_summary = self._call_gemini_for_screening_evaluation(
-                stock_name=stock, symbol=symbol, ic=ic_score, sharpe=sharpe, f_score=f_raw, altman_z=z_raw, tech_str=wyckoff_str, news_text=live_news_text
-            )
+            # 🟢 [RPM 優化] 初篩階段不發送 Gemini 請求，設為基準值，達到 0-RPM 篩選
+            sentiment_bonus = 0.0
+            news_score_val = round(min(10.0, max(1.0, f_raw * 1.0)), 1)
+            ai_screening_summary = f"純量化計量與多維度風控模型評估中 (F-Score: {f_raw}, Z-Score: {z_raw})"
 
             final_raw_score = base_raw_score + sentiment_bonus * 3.5
             comp_score = round(max(0.0, min(100.0, final_raw_score + 25.0)), 1)
@@ -601,7 +557,7 @@ class QuantScreenerEngine:
                 "建議倉位比例": "0%", "建議配置金額 (€)": 0.0, "ATR 停損位": "N/A", "狀態": "不合格 (例外錯誤)"
             }
 
-    def run_screening_with_unqualified(self, selected_stocks, capital=100000, credit_impulse_status="Expansion", m2_gap=1.8, method="Black-Litterman 貝葉斯貝塔優化"):
+    def run_screening_with_unqualified(self, selected_stocks, capital=100000, credit_impulse_status="Expansion", m2_gap=1.8, method="Black-Litterman"):
         macro_multiplier = 1.2 if "Expansion" in credit_impulse_status else (1.0 if "Neutral" in credit_impulse_status else 0.8)
         macro_multiplier *= (1.0 + m2_gap * 0.03)
         
@@ -634,7 +590,6 @@ class QuantScreenerEngine:
             item = passed_records[i]
             rank_boost = (top_n - i) ** 1.5
             score_boost = (max(10.0, item["綜合評分"]) / 50.0) ** 2.0
-            # 引入 Sortino 與低 Beta 防禦加權
             sortino_weight = max(0.3, item.get("Sortino Ratio", 1.0))
             beta_val = item.get("貝塔係數 (Beta)", 1.0)
             beta_penalty = max(0.5, 1.5 - 0.2 * beta_val)
@@ -648,7 +603,6 @@ class QuantScreenerEngine:
         final_passed = []
         for i, item in enumerate(passed_records):
             alloc_pct = normalized_weights[i] if i < top_n else 0.0
-            # 扣除 0.05% 的交易摩擦成本與滑點影響
             net_capital = capital * (1.0 - 0.0005)
             item["建議倉位比例"] = f"{round(alloc_pct*100, 1)}%"
             item["建議配置金額 (€)"] = round(net_capital * alloc_pct, 2)
@@ -703,7 +657,7 @@ class QuantScreenerEngine:
             target_price = round(raw_p * 1.25, 2)
             alloc_pct = f"{round(max(4.0, 15.0 - idx * 1.0), 1)}%"
             alloc_amt = round(capital * (float(alloc_pct.replace('%','')) / 100.0), 2)
-            ai_reason = row.get('消息面與基本面解讀', f"技術面穩健(消息面分:{row['消息面分數']})，中長線佈局。")
+            ai_reason = row.get('消息面與基本面解讀', f"技術面穩健，中長線佈局。")
 
             long_results.append({
                 "排名": f"#{idx+1}",
@@ -727,10 +681,10 @@ class QuantScreenerEngine:
 
         data_summary = df_results.head(15).to_dict(orient="records")
         prompt = f"""
-作為華爾街量化分析師，請對 Top 15 核心投組產出極簡速報：
+作為華爾街量化分析師，請對 Top 15 核心投資組合產出極簡速報：
 - 宏觀狀態：{credit_impulse_status} (M2剪刀差 +{m2_gap}%)
 - 投組摘要：{json.dumps(data_summary, ensure_ascii=False)}
-請給出 3 點核心操作指引（條列式，繁體中文）。
+請給出 3 點核心計量操作指引（條列式，繁體中文）。
 """
         models = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
         headers = {"Content-Type": "application/json"}
