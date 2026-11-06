@@ -14,7 +14,7 @@ import urllib.parse
 from screener_engine import QuantScreenerEngine
 
 st.set_page_config(
-    page_title="INSTITUTIONAL QUANTITATIVE TERMINAL",
+    page_title="BANSHEE QUEEN // INSTITUTIONAL QUANTITATIVE TERMINAL",
     page_icon="👑",
     layout="wide"
 )
@@ -165,7 +165,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="cyber-header">👑 BANSHEE QUEEN // QUANTUM ALPHA TERMINAL</div>', unsafe_allow_html=True)
-st.markdown('<div class="cyber-sub">[INSTITUTIONAL_QUANT_CORE] // BLACK-LITTERMAN BAYESIAN OPTIMIZATION & TAIL RISK SCREENING</div>', unsafe_allow_html=True)
+st.markdown('<div class="cyber-sub">[INSTITUTIONAL_QUANT_CORE] // BLACK-LITTERMAN BAYESIAN OPTIMIZATION & TOTAL SCORE PIPELINE</div>', unsafe_allow_html=True)
 
 engine = QuantScreenerEngine()
 default_watchlist = engine.watchlist
@@ -248,7 +248,7 @@ selection_mode = st.sidebar.radio(
 
 if selection_mode == "全體證券評估":
     selected_stocks = active_watchlist
-    st.sidebar.info(f"📊 將全面執行當前來源之 {len(active_watchlist)} 檔標的量化模型審判。")
+    st.sidebar.info(f"📊 將全面執行當前來源之 {len(active_watchlist)} 檔標的總評分模型審判。")
 else:
     selected_stocks = st.sidebar.multiselect("從清單中勾選目標標的", active_watchlist, default=active_watchlist[:15] if len(active_watchlist)>=15 else active_watchlist)
 
@@ -266,7 +266,7 @@ total_capital = st.sidebar.number_input(
 )
 
 st.sidebar.markdown("---")
-run_btn = st.sidebar.button("👑 執行多因子計量模型審判與投組最佳化", type="primary", use_container_width=True)
+run_btn = st.sidebar.button("👑 執行多因子總評分審判與投組最佳化", type="primary", use_container_width=True)
 
 @st.cache_data(ttl=1800)
 def fetch_stock_rss_news(symbol_or_name):
@@ -291,11 +291,11 @@ if run_btn:
         progress_bar = st.progress(0)
         status_text = st.empty()
         
-        status_text.text("🦇 [01/03] 建立安全數據連線、同步宏觀經濟指標與實時信貸脈衝...")
+        status_text.text("🦇 [01/03] 建立安全數據連線、同步宏觀經濟指標與歷史存檔...")
         progress_bar.progress(25)
         time.sleep(0.2)
         
-        status_text.text("🚀 [02/03] 運行多維度量化因子模型、Sortino/MDD 尾部風險與貝葉斯估值...")
+        status_text.text("🚀 [02/03] 運行三層融合總評分模型、Sortino/MDD 尾部風險與跨期比對...")
         progress_bar.progress(60)
         
         df_res, df_unqualified = engine.run_screening_with_unqualified(
@@ -321,7 +321,7 @@ if run_btn:
             st.session_state['m2_gap'] = m2_gap
             
             progress_bar.progress(100)
-            status_text.text("✨ 華爾街級計量資產審判與核心投資組合 (Portfolio Top) 構築完成！")
+            status_text.text("✨ 華爾街級總評分審判與核心投資組合 (Portfolio Top) 構築完成！")
             time.sleep(0.3)
             
             progress_bar.empty()
@@ -335,11 +335,11 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("宏觀信貸脈衝 (Credit Impulse)", st.session_state['credit_impulse'].split()[0], f"美債收益率 {market_state['benchmark_tnx']}%")
     col2.metric("超額貨幣剪刀差 (ΔM2-ΔGDP)", f"+{st.session_state['m2_gap']}%", "動態估值驅動因子")
-    col3.metric("計量審判合格標的數", f"{len(df_res)} 檔", "多因子計量模型通過")
+    col3.metric("總評分審判合格標的數", f"{len(df_res)} 檔", "多因子總評分模型通過")
     col4.metric("風控模型剔除標的數", f"{len(df_unqualified)} 檔", "流動性或尾部風險未達標")
     
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "📊 合格證券全景量化清單",
+        "📊 合格證券全景總評分清單",
         "⚠️ 風控模型剔除標的清單",
         "🎯 Portfolio Top 15 核心投資組合", 
         "⚡ TOP 10 短期動能與中長線價值雙軌戰情室",
@@ -348,19 +348,24 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
     ])
     
     with tab1:
-        st.markdown("### 📊 通過多維度計量檢驗之合格證券資產池 (含機構級風控參數)")
+        st.markdown("### 📊 通過多維度總評分檢驗之合格證券資產池 (含跨期歷史對比)")
         if df_res.empty:
-            st.warning("⚠️ 目前無符合量化標準之合格標的。")
+            st.warning("⚠️ 目前無符合總評分標準之合格標的。")
         else:
             excel_view_df = df_res.drop(columns=['raw_price', '貨幣', '建議倉位比例', '建議配置金額 (€)', '不合格原因'], errors='ignore')
+            # 將欄位顯示正名為直觀的「歷史存檔總評分」
+            if '上一版純量化分' in excel_view_df.columns:
+                excel_view_df = excel_view_df.rename(columns={'上一版純量化分': '歷史存檔總評分'})
             st.dataframe(excel_view_df, use_container_width=True, height=600)
         
     with tab2:
-        st.markdown("### ⚠️ 未通過量化檢驗 / 遭風控模型剔除之標的清單與原因")
+        st.markdown("### ⚠️ 未通過總評分檢驗 / 遭風控模型剔除之標的清單與原因")
         if df_unqualified.empty:
             st.info("🎉 太棒了！當前資產池中無任何標的觸發風控剔除機制。")
         else:
             unqualified_display = df_unqualified.drop(columns=['raw_price', '貨幣', '建議倉位比例', '建議配置金額 (€)'], errors='ignore')
+            if '上一版純量化分' in unqualified_display.columns:
+                unqualified_display = unqualified_display.rename(columns={'上一版純量化分': '歷史存檔總評分'})
             st.dataframe(unqualified_display, use_container_width=True, height=550)
         
     with tab3:
@@ -370,6 +375,8 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
         else:
             top15_df = df_res.head(15).reset_index(drop=True)
             top15_display = top15_df.drop(columns=['raw_price', '貨幣', '不合格原因'], errors='ignore')
+            if '上一版純量化分' in top15_display.columns:
+                top15_display = top15_display.rename(columns={'上一版純量化分': '歷史存檔總評分'})
             
             col_t1, col_t2 = st.columns([3, 1])
             with col_t2:
@@ -384,7 +391,7 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
                     x='股票名稱', 
                     y='建議配置金額 (€)', 
                     color='綜合評分',
-                    title='Portfolio Top 15 核心標的之最佳資本配置與綜合評分分佈',
+                    title='Portfolio Top 15 核心標的之最佳資本配置與總評分分佈',
                     template='plotly_dark'
                 )
                 fig_top15.update_layout(
@@ -400,7 +407,7 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
         if df_res.empty:
             st.warning("⚠️ 目前無合格標的可用以生成雙軌戰情室。")
         else:
-            st.markdown("結合**量化計量指標**、**即時 RSS 財經頭條新聞**與 **Gemini AI 貝葉斯情感觀點**，為您完整開展短中長線的精準操盤指引。")
+            st.markdown("結合**總評分指標**、**即時 RSS 財經頭條新聞**與 **Gemini AI 貝葉斯情感觀點**，為您完整開展短中長線的精準操盤指引。")
             
             df_short_top10, df_long_top10 = engine.get_dual_track_top10(df_res, capital=total_capital)
             
@@ -425,10 +432,10 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
         else:
             rec_summary = df_res.groupby('投資建議').agg(
                 標的數量=('股票名稱', 'count'),
-                平均綜合評分=('綜合評分', 'mean'),
+                平均總評分=('綜合評分', 'mean'),
                 總配置金額=('建議配置金額 (€)', 'sum')
             ).reset_index()
-            rec_summary['平均綜合評分'] = rec_summary['平均綜合評分'].round(1)
+            rec_summary['平均總評分'] = rec_summary['平均總評分'].round(1)
             
             col_s1, col_s2 = st.columns([2, 1])
             with col_s1:
@@ -476,7 +483,7 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
                         badge_class = "buff-badge" if is_positive else "debuff-badge"
                         delta_html = f'<span class="{badge_class}">Δ {diff_val_str}</span>'
 
-                        with st.expander(f"📌 {row['股票名稱']} ({row['股票代碼']}) — 現價: {row['最新現價']} | 綜合評分: {row['綜合評分']}分 ({delta_html}) | 建議: {row['投資建議']}", expanded=False):
+                        with st.expander(f"📌 {row['股票名稱']} ({row['股票代碼']}) — 現價: {row['最新現價']} | 總評分: {row['綜合評分']}分 ({delta_html}) | 建議: {row['投資建議']}", expanded=False):
                             ca, cb, cc, cd = st.columns(4)
                             ca.metric("索提諾比率 (Sortino Ratio)", row.get('Sortino Ratio', 1.0))
                             cb.metric("最大回撤 (Maximum Drawdown)", row.get('最大回撤 (MDD)', '0.0%'))
@@ -484,8 +491,8 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
                             cd.metric("卡爾瑪比率 (Calmar Ratio)", row.get('卡爾瑪比率', 1.0))
                             
                             st.markdown(f"""
-                            * **技術面指標數據**: `{row['技術面數據']}` | **消息面量化得分**: `{row['消息面分數']}`
-                            * **資訊係數預測 (IC Score)**: `{row['量化預測 IC']}` | **前版純量化基準分**: `{row['上一版純量化分']}`
+                            * **技術面指標數據**: `{row['技術面數據']}` | **財務體質得分**: `{row['消息面分數']}`
+                            * **資訊係數預測 (IC Score)**: `{row['量化預測 IC']}` | **歷史存檔總評分**: `{row['上一版純量化分']}`
                             * **建議資本配置比例**: `{row['建議倉位比例']}` (約合 `{row['建議配置金額 (€)']:,} €`)
                             * **📊 威科夫微觀結構與 ATR 風控**: `{row['技術面分析 (威科夫/ATR)']}`
                             """)
@@ -519,4 +526,4 @@ if 'df_res' in st.session_state and ('df_unqualified' in st.session_state):
                 )
                 st.markdown(ai_report)
 else:
-    st.info("👈 請在左側側邊欄點擊「👑 執行多因子計量模型審判與投組最佳化」按鈕，展開專業的機構級量化決策終端。")
+    st.info("👈 請在左側側邊欄點擊「👑 執行多因子總評分審判與投組最佳化」按鈕，展開專業的機構級量化決策終端。")
